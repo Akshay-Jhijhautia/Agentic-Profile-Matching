@@ -1,4 +1,4 @@
-"""Milestone 1 file system tools, exposed to the agent.
+"""File system tools (``fs_tools``), exposed to the agent.
 
 Reads are unrestricted so the agent can open any resume or job description;
 writes are confined to the configured reports directory.

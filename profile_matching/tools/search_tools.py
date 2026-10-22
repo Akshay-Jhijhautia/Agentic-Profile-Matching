@@ -1,4 +1,4 @@
-"""The Milestone 2 RAG search, exposed to the agent."""
+"""Hybrid semantic + keyword resume search (``job_matcher``), exposed to the agent."""
 
 from __future__ import annotations
 

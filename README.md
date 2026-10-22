@@ -1,9 +1,11 @@
 # Agentic Profile Matching
 
 A LangGraph agent that screens resumes against a job description, explains every
-ranking it makes, and refines the search through conversation. It is
-Milestone 3 of the resume assistant and builds on the Milestone 1 file tools
-and the Milestone 2 RAG matcher (`profile_matching/rag/`).
+ranking it makes, and refines the search through conversation. It is built on a
+retrieval engine (`profile_matching/rag/`):
+- file tools that read PDF, DOCX and text resumes;
+- a ChromaDB index of resumes chunked by section, with extracted skills, experience and education;
+- a hybrid semantic + keyword matcher with must-have checks.
 
 ```
 you> Find me candidates with React and 3+ years experience
@@ -14,11 +16,11 @@ you> Make TypeScript a must-have
 you> Write 3 interview questions for the top candidate
 ```
 
-| Assignment part | Where it lives |
+| Capability | Where it lives |
 | --- | --- |
-| **A. Agent architecture**: state, graph, tools | `matching_agent.py` (graph), `profile_matching/agent/` (state, nodes, routing), `profile_matching/tools/` |
-| **B. Interactive features**: natural-language queries, refinement with re-ranking and explanations | `profile_matching/cli.py`, `agent/routing.py`, `changes.py` |
-| **C. Advanced capabilities**: multi-round screening, explainability | `screening.py`, `guardrails.py`, `explainability.py`, `reports.py` |
+| **Agent architecture**: state, graph, tools | `matching_agent.py` (graph), `profile_matching/agent/` (state, nodes, routing), `profile_matching/tools/` |
+| **Interactive features**: natural-language queries, refinement with re-ranking and explanations | `profile_matching/cli.py`, `agent/routing.py`, `changes.py` |
+| **Advanced capabilities**: multi-round screening, explainability | `screening.py`, `guardrails.py`, `explainability.py`, `reports.py` |
 
 ## Quick start
 
@@ -102,9 +104,9 @@ without deserialization warnings.
 skills, minimum total experience and minimum degree. **Must-haves are knockout
 filters**, so the model's answer passes through deterministic checks:
 
-1. **Recall floor.** The Milestone 2 rule parser adds vocabulary skills the
-   model skipped (as nice-to-have only) and years it found for a must-have the
-   model left without them.
+1. **Recall floor.** A rule-based JD parser (`job_matcher.parse_job_description`)
+   adds vocabulary skills the model skipped (as nice-to-have only) and years it
+   found for a must-have the model left without them.
 2. **Knockout policy.** A must-have can only reject candidates when the text
    demands it and the resume parser can check it:
    - skills offered as alternatives ("PyTorch or TensorFlow") become nice-to-have;
@@ -119,7 +121,7 @@ candidate's whole career is shorter than the years required.
 
 | Round | What happens | LLM calls |
 | --- | --- | --- |
-| **1. Initial screen** | Every resume (100) gets the Milestone 2 hybrid retrieval score (semantic 50% + BM25 keyword 20% + must-have skill coverage 30%) and the must-have checks. The best 10 passing candidates go on | none |
+| **1. Initial screen** | Every resume (100) gets the hybrid retrieval score (semantic 50% + BM25 keyword 20% + must-have skill coverage 30%) and the must-have checks. The best 10 passing candidates go on | none |
 | **2. Deep analysis** | The model reviews each shortlisted resume in parallel, giving a verdict per requirement with a verbatim quote. Code checks the verdicts and computes the **deep score**. Final score = **0.6 × deep + 0.4 × retrieval** | one per candidate, cached |
 | **3. Final decision** | A fixed rule decides hire / no-hire and its confidence. One call writes the rationales. Final scores 60–74 are **borderline** and get improvement suggestions | two for the cohort |
 
@@ -211,9 +213,9 @@ can recover.
 
 | Tool | Purpose |
 | --- | --- |
-| `read_file`, `list_files`, `search_in_file` | Milestone 1 file tools |
+| `read_file`, `list_files`, `search_in_file` | Read, list and keyword-search resume and JD files (PDF, DOCX, TXT, MD) |
 | `write_file` | Save Markdown or text, only inside `REPORTS_DIR` |
-| `rag_search(query, k)` | Milestone 2 hybrid search for open questions |
+| `rag_search(query, k)` | Hybrid semantic + keyword search across all resumes, for open questions |
 | `extract_requirements(jd)` | Must-have vs nice-to-have from JD text, a request or a JD file |
 | `compare_candidates(candidate_ids)` | 2–5 candidates head to head on their final scores, checks and decisions, with a verdict |
 | `generate_interview_questions(candidate_id, count)` | Questions aimed at the candidate's gaps, unverified claims and strengths |
@@ -305,7 +307,7 @@ itself needs a chat model.
 | `profile_matching/schemas.py` | Pydantic models shared across the agent |
 | `profile_matching/prompts.py` | All prompt templates |
 | `profile_matching/services.py`, `candidates.py`, `config.py`, `markdown.py` | Shared dependencies, candidate lookup, settings, Markdown helpers |
-| `profile_matching/rag/` | Milestones 1–2: `fs_tools`, `resume_rag`, `job_matcher`, `skills_vocab` |
+| `profile_matching/rag/` | Retrieval engine: `fs_tools` (read, list, search files), `resume_rag` (section chunking, metadata extraction, ChromaDB index), `job_matcher` (JD parsing, hybrid search, must-have checks), `skills_vocab` (skill aliases) |
 | `scripts/` | Resume dataset generator, stability check |
 | `resumes/`, `job_descriptions/` | 100 sample resumes (PDF, DOCX, TXT) and 3 sample JDs |
 | `tests/` | Offline pytest suite |
@@ -313,7 +315,7 @@ itself needs a chat model.
 ## Dataset
 
 `resumes/` holds 100 fictional resumes:
-- the 12 hand-written Milestone 2 samples;
+- 12 hand-written samples;
 - 88 seeded synthetic ones from `scripts/synthetic_resumes.py`.
 
 The synthetic resumes cover:
@@ -336,7 +338,7 @@ pytest -q
 The suite (over 400 tests) runs offline. A fake chat model answers structured
 calls and scripts tool-calling turns, and ChromaDB runs on a temporary index
 built with a hashing embedder. It covers:
-- the ported Milestone 2 engine;
+- the retrieval engine (file reading, chunking, metadata extraction, indexing, hybrid search);
 - requirement extraction and the knockout policy;
 - every guardrail;
 - the three rounds;

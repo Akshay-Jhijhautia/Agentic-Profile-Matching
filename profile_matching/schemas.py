@@ -110,7 +110,7 @@ class Requirements(BaseModel):
             lines.append(f"Education: {self.min_degree} degree or higher")
         return "\n".join(lines)
 
-    # --- Milestone 2 matcher format ---
+    # --- hybrid matcher (``job_matcher``) format ---
 
     def to_must_haves(self) -> list[dict]:
         """The must-have checks in ``job_matcher.check_must_haves`` format."""

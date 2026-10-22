@@ -1,4 +1,4 @@
-# Retrieval engine (Milestones 1-2)
+# Retrieval engine: file reading, ChromaDB index, hybrid search
 openai>=1.40
 chromadb>=1.5
 rank-bm25>=0.2.2
@@ -7,7 +7,7 @@ python-docx>=1.1
 fpdf2>=2.7
 python-dotenv>=1.0
 
-# Agent (Milestone 3)
+# Agent: LangGraph graph, LLM access, terminal chat
 langgraph>=1.2,<2
 langchain-core>=1.6,<2
 langchain-openai>=1.7,<2

@@ -1,7 +1,7 @@
 """The three screening rounds.
 
-1. Initial screen: every indexed resume is scored with the Milestone 2 hybrid
-   matcher and checked against the must-haves; the best ``shortlist_size``
+1. Initial screen: every indexed resume is scored with the hybrid matcher
+   (``job_matcher``) and checked against the must-haves; the best ``shortlist_size``
    candidates who pass them all go on. Unlike ``JobMatcher.match`` this covers
    the whole index, not a retrieval pool, so no qualifying candidate is missed.
 2. Deep analysis: an LLM reviews each shortlisted candidate's full resume

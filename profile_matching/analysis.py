@@ -2,7 +2,7 @@
 interview questions and detailed match reports.
 
 Each analysis has a deterministic part (facts, scores, must-have checks from
-the Milestone 2 matcher) and an LLM part that reasons over those facts and the
+the hybrid matcher) and an LLM part that reasons over those facts and the
 resume text. The facts are returned alongside the LLM output, so every claim
 the agent makes can be traced back to a number or a resume line.
 """

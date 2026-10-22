@@ -1,6 +1,6 @@
 """Shared paths for the test suite.
 
-Tests rank against a frozen copy of the 12 Milestone 2 sample resumes, so the
+Tests rank against a frozen copy of the 12 hand-written sample resumes, so the
 demo dataset in ``resumes/`` can grow without changing expected rankings.
 """
 

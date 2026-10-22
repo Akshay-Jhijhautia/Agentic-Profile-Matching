@@ -3,10 +3,10 @@
 The LLM decides what is a must-have and what is only nice to have. Two
 deterministic passes then make the result safe to use as knockout filters:
 
-1. Recall floor (``apply_rule_floor``): the Milestone 2 rule parser adds
-   vocabulary skills the LLM skipped, as nice-to-have only so a heuristic
-   never knocks anyone out, and years it found for a must-have the LLM left
-   without them.
+1. Recall floor (``apply_rule_floor``): the rule-based JD parser
+   (``job_matcher.parse_job_description``) adds vocabulary skills the LLM
+   skipped, as nice-to-have only so a heuristic never knocks anyone out, and
+   years it found for a must-have the LLM left without them.
 2. Knockout policy (``apply_knockout_policy``): a must-have can only reject a
    candidate when the text truly demands it and the resume parser can check
    it. Skills offered as alternatives ("PyTorch or TensorFlow") and broad

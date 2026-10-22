@@ -1,7 +1,7 @@
 """Generate fictional sample resumes in PDF, DOCX and TXT formats.
 
-The first four resumes are the Milestone 1 samples; the next eight add variety
-in roles, seniority, section headers ("Work Experience", "Technical Skills", ...)
+The first twelve resumes are hand-written: four basic samples, then eight that
+add variety in roles, seniority, section headers ("Work Experience", "Technical Skills", ...)
 and date formats ("2019 - Present", "Mar 2019 – Jun 2022") so the RAG
 pipeline has realistic material to chunk, parse and rank. Seeded synthetic
 resumes (``synthetic_resumes``) fill the dataset up to ``--count`` so the

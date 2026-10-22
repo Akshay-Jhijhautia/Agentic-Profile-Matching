@@ -1,6 +1,6 @@
 """RAG pipeline for resumes: load, chunk by section, extract metadata, embed, store.
 
-Resumes are read with the Milestone 1 file system tools (``fs_tools``), split
+Resumes are read with the file system tools in ``fs_tools``, split
 into their natural sections (Summary, Skills, Experience, Education, ...) and
 chunked so that a chunk never mixes two sections and, where possible, never
 splits a single job entry. Each chunk is embedded and stored in a local
@@ -100,7 +100,7 @@ _INLINE_HEADER_RE = re.compile(r"^\s*([A-Za-z][A-Za-z &/]{1,40}?)\s*:\s*(\S.*)$"
 
 
 def load_resumes(directory: str) -> list[dict]:
-    """Read every supported resume in ``directory`` with the Milestone 1 tools.
+    """Read every supported resume in ``directory`` with ``fs_tools``.
 
     Returns ``[{"path", "file_name", "content"}]``. Unreadable, unsupported or
     empty files are skipped with a logged warning rather than aborting the run.
