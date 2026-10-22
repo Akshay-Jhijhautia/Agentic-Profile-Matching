@@ -73,8 +73,9 @@ def requirements_key(requirements: Requirements) -> str:
     return hashlib.sha1(json.dumps(basis, sort_keys=True).encode()).hexdigest()[:12]
 
 
-def assessment_key(requirements: Requirements, candidate_id: str) -> str:
-    return f"{requirements_key(requirements)}:{candidate_id}"
+def assessment_key(pool_id: str, requirements: Requirements, candidate_id: str) -> str:
+    """Cache key of an assessment: the pool (ids repeat across folders), requirements and candidate."""
+    return f"{pool_id}:{requirements_key(requirements)}:{candidate_id}"
 
 
 def assess(services: Services, requirements: Requirements, match: CandidateMatch) -> Assessment:
@@ -97,11 +98,14 @@ def assess(services: Services, requirements: Requirements, match: CandidateMatch
 
 
 def apply_assessments(
-    shortlisted: list[CandidateMatch], requirements: Requirements, assessments: dict[str, Assessment]
+    pool_id: str,
+    shortlisted: list[CandidateMatch],
+    requirements: Requirements,
+    assessments: dict[str, Assessment],
 ) -> list[CandidateMatch]:
     """Attach each candidate's assessment and re-rank by final score."""
     return rank_matches(
-        match.model_copy(update={"assessment": assessments.get(assessment_key(requirements, match.id))})
+        match.model_copy(update={"assessment": assessments.get(assessment_key(pool_id, requirements, match.id))})
         for match in shortlisted
     )
 

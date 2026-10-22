@@ -415,6 +415,12 @@ class IntentDecision(BaseModel):
         "requirements; ask: anything about the current candidates, role or files; end: the user "
         "is finished."
     )
+    resume_paths: list[str] = Field(
+        description="Folders or resume files the user wants screened, exactly as written; empty if none."
+    )
+    job_file: str | None = Field(
+        description="A path to a job description file the user gave, exactly as written; else null."
+    )
 
 
 # --- ranking changes after a refinement ------------------------------------------------------------

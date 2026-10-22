@@ -1,6 +1,8 @@
 import builtins
 import io
 import json
+import shutil
+from pathlib import Path
 
 import httpx
 import openai
@@ -9,7 +11,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from rich.console import Console
 
 import matching_agent
-from profile_matching import cli
+from profile_matching import cli, pools
 from profile_matching.agent.routing import IntentRouter
 from profile_matching.schemas import (
     CandidateNote,
@@ -19,6 +21,7 @@ from profile_matching.schemas import (
     Requirements,
 )
 from tests.fakes import SCREENING_RESPONSES, FakeChatModel
+from tests.paths import RESUMES_DIR
 
 ROLE = Requirements.model_validate({
     "role_title": "Python Backend Engineer", "must_have": [{"skill": "Python", "min_years": None}],
@@ -31,14 +34,18 @@ VERDICT = ComparisonVerdict(
 )
 
 
+def intent(kind: str, paths: tuple[str, ...] = (), job_file: str | None = None) -> IntentDecision:
+    return IntentDecision(intent=kind, resume_paths=list(paths), job_file=job_file)
+
+
 def route_by_keyword(messages) -> IntentDecision:
     """Stand-in router: the latest user message decides the intent."""
     latest = messages[1].content.rsplit("Latest user message: ", 1)[1].lower()
     if "find" in latest or "engineer" in latest:
-        return IntentDecision(intent="new_search")
+        return intent("new_search")
     if "goodbye" in latest:
-        return IntentDecision(intent="end")
-    return IntentDecision(intent="ask")
+        return intent("end")
+    return intent("ask")
 
 
 def tool_call(name: str, args: dict, call_id: str = "call_1") -> AIMessage:
@@ -173,13 +180,13 @@ def test_close_dangling_tool_calls():
 
 
 def test_router_gives_the_model_role_and_previous_reply(services):
-    services.model = FakeChatModel({IntentDecision: IntentDecision(intent="ask")})
+    services.model = FakeChatModel({IntentDecision: intent("ask")})
     router = IntentRouter(services)
     update = router({
         "requirements": ROLE,
         "messages": [AIMessage("Shall I compare them?"), HumanMessage("yes please")],
     })
-    assert update == {"intent": "ask"}
+    assert update == {"intent": "ask", "load_paths": None, "jd_file": None}
     _, messages = services.model.calls[0]
     assert messages[1].content.splitlines() == [
         "Current role: Python Backend Engineer",
@@ -236,7 +243,7 @@ DJANGO_MUST = ROLE.model_copy(update={
 
 def refine_router(messages) -> IntentDecision:
     latest = messages[1].content.rsplit("Latest user message: ", 1)[1].lower()
-    return IntentDecision(intent="refine" if "must-have" in latest else route_by_keyword(messages).intent)
+    return intent("refine" if "must-have" in latest else route_by_keyword(messages).intent)
 
 
 def test_refinement_reranks_and_explains_the_changes(chat, services):
@@ -281,9 +288,9 @@ def test_new_search_after_a_refinement_has_no_changes_section(chat, services):
 
 
 def test_refine_without_a_role_starts_a_new_search(services):
-    services.model = FakeChatModel({IntentDecision: IntentDecision(intent="refine")})
+    services.model = FakeChatModel({IntentDecision: intent("refine")})
     update = IntentRouter(services)({"messages": [HumanMessage("Make React a must-have")]})
-    assert update == {"intent": "new_search"}
+    assert update == {"intent": "new_search", "load_paths": None, "jd_file": None}
 
 
 def test_candidate_reports_are_shown_verbatim(chat, services):
@@ -298,3 +305,135 @@ def test_candidate_reports_are_shown_verbatim(chat, services):
     assert "Candidate report" in text and f"{top.name}: Python Backend Engineer" in text
     assert "How the score adds up" in text
     assert state(chat)["messages"][-1].text == "Strong on Python; probe the unverified years."
+
+
+# --- loading resume folders ------------------------------------------------------------------------
+
+
+@pytest.fixture
+def applicants(tmp_path):
+    folder = tmp_path / "applicants"
+    folder.mkdir()
+    for name in ("resume_john_doe.pdf", "resume_alex_lee.txt"):
+        shutil.copy(RESUMES_DIR / name, folder)
+    return folder
+
+
+def test_resumes_command_loads_a_folder_without_the_model(chat, services, applicants):
+    chat.send(f"/resumes {applicants}")
+    assert services.pool.folder == applicants
+    assert not any(schema is IntentDecision for schema, _ in services.model.calls)
+    reply = state(chat)["messages"][-1].text
+    assert reply.startswith("Resumes in ") and "2 ready" in reply and "Describe the role" in reply
+    assert "2 ready" in output(chat)
+    assert chat.graph.get_state(chat.config).next == ("human_feedback",)
+
+
+def test_loading_a_folder_rescreens_the_current_role(chat, services, applicants):
+    chat.send("Find me a Python backend engineer")
+    assert len(state(chat)["candidates"]) == 12
+    chat.send(f"/resumes {applicants}")
+    values = state(chat)
+    assert {m.name for m in values["candidates"]} == {"John Doe", "Alex Lee"}
+    assert values["resume_folder"].endswith("applicants")
+    assert "Screening them for Python Backend Engineer" in values["messages"][-2].text
+    assert values["report"].startswith("# Shortlist")
+
+
+def test_folder_and_role_in_one_message(chat, services, applicants, tmp_path):
+    jd = tmp_path / "backend.txt"
+    jd.write_text("Python backend engineer. Requirements: Python, Django.")
+    services.model.responses[IntentDecision] = intent("new_search", (str(applicants),), str(jd))
+    chat.send(f"Screen the resumes in {applicants} against {jd}")
+    values = state(chat)
+    assert services.pool.folder == applicants
+    assert values["job_description"] == jd.read_text().strip()  # the JD file, not the sentence
+    assert {m.name for m in values["candidates"]} == {"John Doe", "Alex Lee"}
+
+
+def test_a_missing_folder_is_reported_and_nothing_changes(chat, services):
+    before = services.pool
+    chat.send("/resumes /no/such/folder")
+    assert services.pool is before
+    assert "couldn't load those resumes" in state(chat)["messages"][-1].text
+    assert chat.graph.get_state(chat.config).next == ("human_feedback",)
+
+
+def test_assistant_knows_the_active_folder(chat, services):
+    services.model.replies = [AIMessage("12 resumes are loaded.")]
+    chat.send("How many resumes are loaded?")
+    _, prompt = services.model.calls[-1]
+    assert "Resumes: " in prompt[0].content and "(12 resumes)" in prompt[0].content
+
+
+# --- uploads and starting without resumes -------------------------------------------------------------
+
+
+@pytest.fixture
+def downloads(tmp_path):
+    folder = tmp_path / "Downloads"
+    folder.mkdir()
+    for name in ("resume_john_doe.pdf", "resume_alex_lee.txt", "resume_maria_garcia.pdf"):
+        shutil.copy(RESUMES_DIR / name, folder)
+    return folder
+
+
+def test_a_role_without_resumes_waits_for_them(chat, services, downloads):
+    services.pool = None
+    chat.send("Find me a Python backend engineer")
+    reply = state(chat)["messages"][-1].text
+    assert "No resumes are loaded yet" in reply and "Python Backend Engineer" in reply
+    assert not state(chat).get("candidates")
+    assert chat.graph.get_state(chat.config).next == ("human_feedback",)
+
+    chat.send(f"/add {downloads / 'resume_john_doe.pdf'} {downloads / 'resume_alex_lee.txt'}")
+    values = state(chat)
+    assert values["resume_folder"] == "your uploaded resumes"
+    assert {m.name for m in values["candidates"]} == {"John Doe", "Alex Lee"}  # screened for the role
+    assert values["report"].startswith("# Shortlist")
+
+
+def test_uploads_in_one_conversation_share_a_batch(chat, services, downloads):
+    services.pool = None
+    chat.send(f"/add {downloads / 'resume_john_doe.pdf'}")
+    batch = state(chat)["upload_folder"]
+    assert "1 ready" in state(chat)["messages"][-1].text
+    chat.send(f"/add {downloads / 'resume_alex_lee.txt'}")
+    assert state(chat)["upload_folder"] == batch
+    assert "2 ready" in state(chat)["messages"][-1].text
+    assert sorted(p.name for p in Path(batch).iterdir()) == ["resume_alex_lee.txt", "resume_john_doe.pdf"]
+
+
+def test_files_named_in_words_are_uploaded(chat, services, downloads):
+    files = [str(downloads / "resume_john_doe.pdf"), str(downloads / "resume_maria_garcia.pdf")]
+    services.model.responses[IntentDecision] = intent("new_search", tuple(files))
+    chat.send(f"Here are two resumes, {files[0]} and {files[1]}: find me a Python backend engineer")
+    values = state(chat)
+    assert values["resume_folder"] == "your uploaded resumes"
+    assert {m.name for m in values["candidates"]} == {"John Doe", "Maria Garcia"}
+
+
+def test_mixing_a_folder_and_files_is_refused(chat, services, downloads):
+    before = services.pool
+    chat.send(f"/add {downloads} {downloads / 'resume_john_doe.pdf'}")
+    assert services.pool is before
+    assert "not a mix" in state(chat)["messages"][-1].text
+
+
+def test_chat_started_without_resumes_says_so(chat, services, monkeypatch):
+    services.pool = None
+    monkeypatch.setattr(builtins, "input", lambda *_: "/exit")
+    assert cli.run(chat.graph, "gpt-test", console=chat.console) == 0
+    assert "No resumes loaded yet" in output(chat) and "/add <files>" in output(chat)
+
+
+def test_startup_files_and_later_uploads_share_a_batch(services, downloads):
+    services.model = FakeChatModel(SCREENING_RESPONSES)
+    batch = pools.new_batch(services.settings.uploads_dir)
+    report, _ = services.use_paths([str(downloads / "resume_john_doe.pdf")], batch=batch)
+    session = cli.ChatSession(matching_agent.build_graph(services, conversational=True),
+                              Console(file=io.StringIO(), width=120),
+                              initial_state={"resume_folder": report.folder, "upload_folder": str(batch)})
+    session.send(f"/add {downloads / 'resume_alex_lee.txt'}")
+    assert session.graph.get_state(session.config).values["upload_folder"] == str(batch)
+    assert sorted(p.name for p in batch.iterdir()) == ["resume_alex_lee.txt", "resume_john_doe.pdf"]

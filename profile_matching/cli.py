@@ -20,6 +20,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
+from .pools import IntakeReport
 from .rag import resume_rag
 
 # Graph steps allowed per user message (a tool loop is two steps per call).
@@ -35,10 +36,13 @@ EXAMPLES = (
 )
 HELP = """\
 **Start a search** by describing the role, pasting a job description or giving a JD file path.
+**Load resumes** with `/resumes <folder>`, `/add <files>`, or in words: "screen the resumes in ~/Downloads/backend".
 **Then ask** for comparisons, explanations, interview questions or candidate details.
 
 | Command | Effect |
 | --- | --- |
+| `/resumes <folder>` | Screen a folder of resumes (indexed incrementally) |
+| `/add <file> ...` | Upload resume files (drag them into the terminal); they are screened together |
 | `/report` | Show the latest shortlist report again |
 | `/reset` | Start a new conversation |
 | `/help` | Show this help |
@@ -78,9 +82,11 @@ def close_dangling_tool_calls(messages: list[AnyMessage], error: str) -> list[To
 class ChatSession:
     """One conversation thread with the agent graph."""
 
-    def __init__(self, graph: CompiledStateGraph, console: Console):
+    def __init__(self, graph: CompiledStateGraph, console: Console, initial_state: dict | None = None):
         self.graph = graph
         self.console = console
+        # Seeds the first turn of every conversation, e.g. the resumes loaded at startup.
+        self.initial_state = initial_state or {}
         self.reset()
 
     def reset(self) -> None:
@@ -90,8 +96,12 @@ class ChatSession:
 
     def send(self, text: str) -> None:
         """Deliver one user message and render what the agent does with it."""
-        waiting = self.graph.get_state(self.config).interrupts
-        payload = Command(resume=text) if waiting else {"messages": [("user", text)]}
+        snapshot = self.graph.get_state(self.config)
+        if snapshot.interrupts:
+            payload = Command(resume=text)
+        else:
+            first_turn = not snapshot.values
+            payload = {"messages": [("user", text)]} | (self.initial_state if first_turn else {})
         try:
             with self.console.status("Working…"):
                 for update in self.graph.stream(payload, self.config, stream_mode="updates"):
@@ -119,6 +129,12 @@ class ChatSession:
 
     def _note(self, text: str) -> None:
         self.console.print(f"[dim]{text}[/dim]")
+
+    def _on_await_resumes(self, change: dict) -> None:
+        self.console.print(Markdown(change["messages"][-1].text))
+
+    def _on_load_resumes(self, change: dict) -> None:
+        self.console.print(Markdown(change["messages"][-1].text))
 
     def _on_route_intent(self, change: dict) -> None:
         if change["intent"] == "new_search":
@@ -200,14 +216,24 @@ COMMANDS: dict[str, Callable[[ChatSession], object]] = {
 }
 
 
-def run(graph: CompiledStateGraph, model_name: str, console: Console | None = None) -> int:
+def run(
+    graph: CompiledStateGraph,
+    model_name: str,
+    console: Console | None = None,
+    report: IntakeReport | None = None,
+    initial_state: dict | None = None,
+) -> int:
     """Chat until the user exits; returns the process exit code."""
     console = console or Console()
-    session = ChatSession(graph, console)
+    session = ChatSession(graph, console, initial_state)
     examples = "\n".join(f"  • {example}" for example in EXAMPLES)
+    loaded = (
+        f"Screening {report.ready} resumes from {report.folder}." if report
+        else "No resumes loaded yet: use /resumes <folder> or /add <files> (drag files into the terminal)."
+    )
     console.print(Panel(
-        f"Describe a role, paste a job description or give a JD file path. For example:\n{examples}\n\n"
-        "Commands: /help /report /reset /exit",
+        f"{loaded}\n\nDescribe a role, paste a job description or give a JD file path. For example:\n"
+        f"{examples}\n\nCommands: /resumes <folder> /add <files> /help /report /reset /exit",
         title=f"Matching agent ({model_name})", border_style="cyan",
     ))
     while True:

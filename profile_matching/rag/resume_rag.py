@@ -6,23 +6,16 @@ chunked so that a chunk never mixes two sections and, where possible, never
 splits a single job entry. Each chunk is embedded and stored in a local
 ChromaDB collection together with the resume's metadata (name, skills,
 experience years, education), so the job matcher can filter and rank on it.
-
-CLI (via the project entry point):
-    python main.py index [resumes/] [--embedder openai|hashing] [--force] [--reset]
-    python main.py stats
-    python main.py list
 """
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import json
 import logging
 import math
 import os
 import re
-import sys
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
@@ -99,27 +92,49 @@ _INLINE_HEADER_RE = re.compile(r"^\s*([A-Za-z][A-Za-z &/]{1,40}?)\s*:\s*(\S.*)$"
 # --- loading -------------------------------------------------------------------
 
 
-def load_resumes(directory: str) -> list[dict]:
-    """Read every supported resume in ``directory`` with ``fs_tools``.
+def file_stamp(path: str) -> str:
+    """Size and modification time: unchanged files are recognised without reading them,
+    which matters for scanned resumes that take seconds of OCR each."""
+    stat = os.stat(path)
+    return f"{stat.st_size}:{stat.st_mtime_ns}"
 
-    Returns ``[{"path", "file_name", "content"}]``. Unreadable, unsupported or
-    empty files are skipped with a logged warning rather than aborting the run.
+
+def read_entry(entry: dict) -> tuple[dict | None, dict | None]:
+    """Read one ``fs_tools.list_files`` entry: ``(resume, None)`` or ``(None, skipped)``.
+
+    A resume is ``{"path", "file_name", "content", "ocr", "stamp"}`` (``ocr``
+    when the text came from OCR); a skipped file is ``{"file", "reason"}``.
     """
-    resumes = []
+    result = fs_tools.read_file(entry["path"])
+    if not result["success"]:
+        skipped = {"file": entry["name"], "reason": result["error"]}
+    elif not result["content"].strip():
+        skipped = {"file": entry["name"], "reason": result.get("warning", "no extractable text")}
+    else:
+        return {
+            "path": result["filepath"], "file_name": entry["name"], "content": result["content"],
+            "ocr": result["metadata"].get("ocr", False), "stamp": file_stamp(result["filepath"]),
+        }, None
+    logger.debug("Skipping %s: %s", skipped["file"], skipped["reason"])  # callers report it
+    return None, skipped
+
+
+def read_folder(directory: str) -> tuple[list[dict], list[dict]]:
+    """Read every file in ``directory``: ``(resumes, skipped)`` as from ``read_entry``,
+    so callers can tell the user exactly what was left out and why."""
+    resumes, skipped = [], []
     for entry in fs_tools.list_files(directory):
-        if entry["extension"] not in fs_tools.SUPPORTED_READ_EXTENSIONS:
-            continue
-        result = fs_tools.read_file(entry["path"])
-        if not result["success"]:
-            logger.warning("Skipping %s: %s", entry["name"], result["error"])
-            continue
-        if not result["content"].strip():
-            logger.warning("Skipping %s: no extractable text", entry["name"])
-            continue
-        resumes.append(
-            {"path": result["filepath"], "file_name": entry["name"], "content": result["content"]}
-        )
-    return resumes
+        resume, skip = read_entry(entry)
+        if resume:
+            resumes.append(resume)
+        else:
+            skipped.append(skip)
+    return resumes, skipped
+
+
+def load_resumes(directory: str) -> list[dict]:
+    """The readable resumes in ``directory`` (see ``read_folder`` for what was skipped)."""
+    return read_folder(directory)[0]
 
 
 # --- section splitting -----------------------------------------------------------
@@ -729,7 +744,7 @@ def _content_hash(content: str) -> str:
     return hashlib.sha256(f"{PIPELINE_VERSION}\n{content}".encode("utf-8")).hexdigest()
 
 
-def _chunk_record(chunk: dict, meta: dict, file_name: str, content_hash: str) -> dict:
+def _chunk_record(chunk: dict, meta: dict, file_name: str, content_hash: str, file_stamp: str = "") -> dict:
     """Chroma metadata for one chunk: chunk fields plus the resume's metadata.
 
     Chroma accepts scalars and lists but not dicts or ``None``, so
@@ -742,6 +757,7 @@ def _chunk_record(chunk: dict, meta: dict, file_name: str, content_hash: str) ->
         "section": chunk["section"],
         "chunk_index": chunk["chunk_index"],
         "content_hash": content_hash,
+        "file_stamp": file_stamp,
         "email": meta["email"],
         "skills": meta["skills"],
         "skill_years": json.dumps(meta["skill_years"]),
@@ -833,23 +849,39 @@ class ResumeRAG:
     def index_directory(self, directory: str, force: bool = False) -> dict:
         """Index every resume in ``directory``; skip unchanged ones unless ``force``.
 
+        A file whose size and modification time match the index is not read
+        again; one whose content hash matches is kept and its stamp refreshed.
         Resumes previously indexed from this directory whose files are gone
         (or no longer readable) are removed from the index.
 
-        Returns ``{"indexed", "unchanged", "removed"}`` (lists of resume paths)
-        and ``"chunks"`` (number of chunks written).
+        Returns ``{"indexed", "unchanged", "removed", "ocr"}`` (lists of resume
+        paths; ``ocr`` lists files read with OCR in this run), ``"skipped"``
+        (``{"file", "reason"}`` per unusable file) and ``"chunks"`` (number of
+        chunks written).
         """
-        summary = {"indexed": [], "unchanged": [], "removed": [], "chunks": 0}
+        summary = {"indexed": [], "unchanged": [], "removed": [], "chunks": 0, "skipped": [], "ocr": []}
         seen = set()
-        for resume in load_resumes(directory):
-            path = resume["path"]
-            seen.add(path)
-            content_hash = _content_hash(resume["content"])
-            if not force and self._stored_hash(path) == content_hash:
+        for entry in fs_tools.list_files(directory):
+            path = str(Path(entry["path"]).resolve())
+            stored = None if force else self._stored_record(path)
+            if stored and stored.get("file_stamp") == file_stamp(path):
+                seen.add(path)
                 summary["unchanged"].append(path)
                 continue
+            resume, skipped = read_entry(entry)
+            if skipped:
+                summary["skipped"].append(skipped)
+                continue
+            seen.add(resume["path"])
+            if resume["ocr"]:
+                summary["ocr"].append(resume["path"])
+            content_hash = _content_hash(resume["content"])
+            if stored and stored.get("content_hash") == content_hash:
+                self._set_stamp(resume["path"], resume["stamp"])
+                summary["unchanged"].append(resume["path"])
+                continue
             summary["chunks"] += self.index_resume(resume, content_hash)
-            summary["indexed"].append(path)
+            summary["indexed"].append(resume["path"])
 
         directory_path = Path(directory).expanduser().resolve()
         for path in sorted(self.indexed_paths() - seen):
@@ -881,18 +913,23 @@ class ResumeRAG:
             ids=[f"{c['id']}@{path_key}" for c in chunks],
             embeddings=vectors,
             documents=[c["document"] for c in chunks],
-            metadatas=[_chunk_record(c, meta, file_name, content_hash) for c in chunks],
+            metadatas=[_chunk_record(c, meta, file_name, content_hash, resume.get("stamp", "")) for c in chunks],
         )
         return len(chunks)
 
     def remove_resume(self, resume_path: str) -> None:
         self.collection.delete(where={"resume_path": resume_path})
 
-    def _stored_hash(self, resume_path: str) -> str | None:
-        found = self.collection.get(
-            where={"resume_path": resume_path}, limit=1, include=["metadatas"]
+    def _stored_record(self, resume_path: str) -> dict | None:
+        """One stored chunk record of ``resume_path`` (they share the resume-level fields)."""
+        found = self.collection.get(where={"resume_path": resume_path}, limit=1, include=["metadatas"])
+        return found["metadatas"][0] if found["ids"] else None
+
+    def _set_stamp(self, resume_path: str, stamp: str) -> None:
+        found = self.collection.get(where={"resume_path": resume_path}, include=["metadatas"])
+        self.collection.update(
+            ids=found["ids"], metadatas=[record | {"file_stamp": stamp} for record in found["metadatas"]]
         )
-        return found["metadatas"][0].get("content_hash") if found["ids"] else None
 
     # --- reading ---
 
@@ -933,11 +970,14 @@ class ResumeRAG:
 
 
 def display_path(path: str) -> str:
-    """``path`` relative to the working directory when it is inside it."""
-    try:
-        return str(Path(path).relative_to(Path.cwd()))
-    except ValueError:
-        return path
+    """``path`` relative to the working directory when inside it, else ``~/...`` under
+    the home directory, else as given."""
+    for base, prefix in ((Path.cwd(), ""), (Path.home(), "~/")):
+        try:
+            return prefix + str(Path(path).relative_to(base))
+        except ValueError:
+            continue
+    return path
 
 
 # Expected failures reported as one line instead of a traceback
@@ -961,83 +1001,3 @@ def cli_error_message(exc: Exception) -> str:
 def missing_api_key(embedder_name: str) -> bool:
     """True when ``embedder_name`` needs OpenAI but no ``OPENAI_API_KEY`` is set."""
     return embedder_name.startswith("openai") and not os.getenv("OPENAI_API_KEY")
-
-
-def _print_resume_line(meta: dict) -> None:
-    years = meta["experience_years"]
-    years_text = f"{years:g} yrs" if years is not None else "? yrs"
-    print(
-        f"  {meta['candidate_name']:<20} {years_text:>8}  {meta['highest_degree'] or '-':<11} "
-        f"{len(meta['skills']):>2} skills  {display_path(meta['resume_path'])}"
-    )
-
-
-def _run_index(args: argparse.Namespace) -> int:
-    if args.embedder == "openai" and missing_api_key(default_embedder_name()):
-        print(
-            "Error: OPENAI_API_KEY is not set. Add it to .env, or use --embedder hashing "
-            "to index offline.",
-            file=sys.stderr,
-        )
-        return 1
-    embedder = OpenAIEmbedder() if args.embedder == "openai" else HashingEmbedder()
-    llm_client = None if args.no_llm else make_llm_client()
-    rag = ResumeRAG(args.db, embedder=embedder, llm_client=llm_client, reset=args.reset)
-    summary = rag.index_directory(args.directory, force=args.force)
-
-    print(
-        f"Indexed {len(summary['indexed'])} resume(s) ({summary['chunks']} chunks), "
-        f"{len(summary['unchanged'])} unchanged, {len(summary['removed'])} removed "
-        f"[{rag.embedder_name}, db: {args.db}]"
-    )
-    indexed = set(summary["indexed"])
-    for meta in rag.list_resumes():
-        if meta["resume_path"] in indexed:
-            _print_resume_line(meta)
-    for path in summary["removed"]:
-        print(f"  removed {display_path(path)}")
-    return 0
-
-
-def main(argv: list[str] | None = None) -> int:
-    load_dotenv()
-    logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
-
-    common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--db", default=DEFAULT_DB_DIR, help=f"ChromaDB directory (default: {DEFAULT_DB_DIR}).")
-    parser = argparse.ArgumentParser(description="Index resumes into a ChromaDB vector store.")
-    commands = parser.add_subparsers(dest="command", required=True)
-
-    index = commands.add_parser("index", parents=[common], help="Index a directory of resumes.")
-    index.add_argument("directory", nargs="?", default="resumes", help="Default: resumes")
-    index.add_argument(
-        "--embedder", choices=["openai", "hashing"], default="openai",
-        help="openai (default) or hashing (offline, keyword-only).",
-    )
-    index.add_argument("--no-llm", action="store_true", help="Disable the LLM metadata fallback.")
-    index.add_argument("--force", action="store_true", help="Re-index unchanged resumes too.")
-    index.add_argument("--reset", action="store_true", help="Delete the index first (needed to switch embedders).")
-    commands.add_parser("stats", parents=[common], help="Show index statistics.")
-    commands.add_parser("list", parents=[common], help="List indexed candidates.")
-    args = parser.parse_args(argv)
-
-    try:
-        if args.command == "index":
-            return _run_index(args)
-        rag = ResumeRAG(args.db)
-        if args.command == "stats":
-            for key, value in rag.stats().items():
-                print(f"{key:>12}: {value}")
-        else:
-            resumes = rag.list_resumes()
-            print(f"{len(resumes)} indexed resume(s):")
-            for meta in resumes:
-                _print_resume_line(meta)
-        return 0
-    except CLI_ERRORS as exc:
-        print(f"Error: {cli_error_message(exc)}", file=sys.stderr)
-    return 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())

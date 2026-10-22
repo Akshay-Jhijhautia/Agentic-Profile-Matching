@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 import matching_agent
 from profile_matching import reports, screening
 from profile_matching.agent.state import make_checkpointer
+from profile_matching.pools import ResumePool
 from profile_matching.rag import resume_rag
 from profile_matching.schemas import CandidateMatch, Requirements
 from tests.fakes import SCREENING_RESPONSES, FakeChatModel
@@ -45,8 +46,11 @@ def run(services):
 def test_graph_is_the_pipeline(services):
     graph = matching_agent.build_graph(services).get_graph()
     edges = {(e.source, e.target) for e in graph.edges}
-    path = ("__start__", *matching_agent.PIPELINE)
-    assert edges == set(zip(path, path[1:])) | {
+    assert edges == {
+        ("__start__", "parse_jd"), ("parse_jd", "extract_requirements"),
+        # screening needs resumes; without them the requirements are acknowledged instead
+        ("extract_requirements", "search_resumes"), ("extract_requirements", "await_resumes"),
+        ("await_resumes", "__end__"), ("search_resumes", "rank_candidates"),
         # round 2 fans out per candidate, or is skipped when nothing needs assessing
         ("rank_candidates", "assess_candidate"), ("rank_candidates", "finalize_ranking"),
         ("assess_candidate", "finalize_ranking"), ("finalize_ranking", "suggest_improvements"),
@@ -145,8 +149,9 @@ def test_summary_with_nothing_indexed():
 
 
 def test_check_ready_needs_an_index(services, tmp_path):
-    services.rag = resume_rag.ResumeRAG(str(tmp_path / "empty"), embedder=resume_rag.HashingEmbedder())
-    with pytest.raises(ValueError, match="is empty"):
+    empty = resume_rag.ResumeRAG(str(tmp_path / "empty"), embedder=resume_rag.HashingEmbedder())
+    services.pool = ResumePool(tmp_path, empty)
+    with pytest.raises(ValueError, match="No readable resumes"):
         services.check_ready()
 
 

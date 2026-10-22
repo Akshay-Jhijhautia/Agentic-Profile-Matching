@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from functools import lru_cache
 
 from dotenv import load_dotenv
@@ -31,6 +32,10 @@ class Settings:
     # OpenAI's Responses API: needed for tool calling with reasoning models (gpt-5.6, gpt-6).
     llm_responses_api: bool = True
     db_dir: str = resume_rag.DEFAULT_DB_DIR
+    # Where resumes uploaded in chat (or given as files) are copied, one subfolder per batch.
+    uploads_dir: str = str(Path.home() / ".profile-match" / "uploads")
+    # "openai" (default) or "hashing" (offline, keyword overlap only) for new resume pools.
+    embedder: str = "openai"
     # The only directory the agent may write to (reports, summaries).
     reports_dir: str = "reports"
     # Candidates kept after the initial screen.
@@ -50,6 +55,8 @@ class Settings:
             llm_max_retries=int(os.getenv("OPENAI_MAX_RETRIES") or defaults.llm_max_retries),
             llm_responses_api=_flag("OPENAI_RESPONSES_API", defaults.llm_responses_api),
             db_dir=os.getenv("CHROMA_DB_DIR") or defaults.db_dir,
+            uploads_dir=os.getenv("UPLOADS_DIR") or defaults.uploads_dir,
+            embedder=os.getenv("EMBEDDER") or defaults.embedder,
             reports_dir=os.getenv("REPORTS_DIR") or defaults.reports_dir,
             shortlist_size=int(os.getenv("SHORTLIST_SIZE") or defaults.shortlist_size),
             screening_rounds=int(os.getenv("SCREENING_ROUNDS") or defaults.screening_rounds),
@@ -61,6 +68,8 @@ class Settings:
             raise ValueError(f"screening_rounds must be 1, 2 or 3, got {self.screening_rounds}")
         if self.shortlist_size < 1:
             raise ValueError(f"shortlist_size must be at least 1, got {self.shortlist_size}")
+        if self.embedder not in {"openai", "hashing"}:
+            raise ValueError(f"embedder must be openai or hashing, got {self.embedder}")
 
 
 @lru_cache(maxsize=1)

@@ -196,35 +196,3 @@ def test_stored_vectors_support_similarity_query(rag, resume_dir):
     (query,) = rag.embedder.embed(["Java Spring Boot Kafka developer"])
     result = rag.collection.query(query_embeddings=[query], n_results=1, include=["metadatas"])
     assert result["metadatas"][0][0]["candidate_name"] == "Alex Lee"
-
-
-# --- CLI -------------------------------------------------------------------------------------------
-
-
-def test_cli_index_stats_and_list(resume_dir, db_dir, capsys):
-    assert resume_rag.main(
-        ["index", str(resume_dir), "--db", db_dir, "--embedder", "hashing", "--no-llm"]
-    ) == 0
-    assert "Indexed 3 resume(s)" in capsys.readouterr().out
-
-    assert resume_rag.main(["stats", "--db", db_dir]) == 0
-    assert "resumes: 3" in capsys.readouterr().out
-
-    assert resume_rag.main(["list", "--db", db_dir]) == 0
-    out = capsys.readouterr().out
-    assert "3 indexed resume(s)" in out and "John Doe" in out
-
-
-def test_cli_requires_api_key_for_openai(resume_dir, db_dir, monkeypatch, capsys):
-    monkeypatch.setattr(resume_rag, "load_dotenv", lambda: None)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    assert resume_rag.main(["index", str(resume_dir), "--db", db_dir]) == 1
-    assert "OPENAI_API_KEY is not set" in capsys.readouterr().err
-
-
-def test_cli_missing_directory(db_dir, tmp_path, capsys):
-    code = resume_rag.main(
-        ["index", str(tmp_path / "nope"), "--db", db_dir, "--embedder", "hashing", "--no-llm"]
-    )
-    assert code == 1
-    assert "Directory not found" in capsys.readouterr().err

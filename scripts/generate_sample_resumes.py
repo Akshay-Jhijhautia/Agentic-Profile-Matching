@@ -7,8 +7,9 @@ pipeline has realistic material to chunk, parse and rank. Seeded synthetic
 resumes (``synthetic_resumes``) fill the dataset up to ``--count`` so the
 agent has a realistic pool to screen.
 
-Run from the project root:
-    python -m scripts.generate_sample_resumes [output_dir] [--count 100] [--seed 2026]
+The resumes are for demos and evaluation only; they are not part of the
+repository or the product. Run from the project root:
+    python -m scripts.generate_sample_resumes /tmp/sample_resumes [--count 100] [--seed 2026]
 """
 
 from __future__ import annotations
@@ -22,7 +23,6 @@ from fpdf import FPDF
 from scripts import synthetic_resumes
 
 DEFAULT_COUNT = 100
-DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "resumes"
 
 # PDF output uses the core Helvetica font (latin-1 only), so PDF resumes must
 # stick to plain ASCII hyphens; DOCX/TXT resumes may use en dashes.
@@ -383,7 +383,7 @@ def generate(
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Generate the sample resume dataset.")
-    parser.add_argument("output_dir", nargs="?", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument("output_dir", type=Path, help="Folder to write the resumes to.")
     parser.add_argument("--count", type=int, default=DEFAULT_COUNT, help=f"Total resumes (default: {DEFAULT_COUNT}).")
     parser.add_argument("--seed", type=int, default=synthetic_resumes.SEED, help="Seed for synthetic resumes.")
     args = parser.parse_args(argv)

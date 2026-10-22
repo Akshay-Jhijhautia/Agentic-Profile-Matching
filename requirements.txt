@@ -13,5 +13,10 @@ langchain-core>=1.6,<2
 langchain-openai>=1.7,<2
 rich>=13.0
 
+# Scanned resumes (OCR): optional; without them scanned PDFs and images are reported, not read
+rapidocr>=3.10,<4
+onnxruntime>=1.20
+pypdfium2>=4.30
+
 # Tests
 pytest>=8.0

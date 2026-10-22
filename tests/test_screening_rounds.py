@@ -123,8 +123,8 @@ def test_cached_assessments_are_reused(services):
 def _assessed(services, names: list[str], deep_score: int = 90):
     profiles = services.candidates.resolve_many(names)
     return screening.apply_assessments(
-        screening.evaluate(services, ROLE, profiles), ROLE,
-        {screening.assessment_key(ROLE, p.id): fake_assessment(deep_score) for p in profiles},
+        services.pool.id, screening.evaluate(services, ROLE, profiles), ROLE,
+        {screening.assessment_key(services.pool.id, ROLE, p.id): fake_assessment(deep_score) for p in profiles},
     )
 
 

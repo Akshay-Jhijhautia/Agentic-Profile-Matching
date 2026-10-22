@@ -25,6 +25,7 @@ def directory():
 def test_candidate_id_is_file_stem_without_prefix():
     assert candidate_id("/x/resumes/resume_maria_garcia.pdf") == "maria_garcia"
     assert candidate_id("cv_bob.docx") == "cv_bob"
+    assert candidate_id("/x/Jordan_Rivera_CV_scan.pdf") == "jordan_rivera_cv_scan"
 
 
 @pytest.mark.parametrize(

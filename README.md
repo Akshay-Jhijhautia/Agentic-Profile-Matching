@@ -29,13 +29,64 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env                 # put your OPENAI_API_KEY in .env
 
-python main.py index resumes         # embed the 100 sample resumes into ChromaDB (once)
-python matching_agent.py             # chat with the agent (also: python main.py chat)
-python main.py screen --jd-file job_descriptions/frontend_react.txt   # one-shot screening
+# Chat: describe the role, then load resumes (or the other way round)
+python main.py chat
+you> /resumes ~/Downloads/backend-applicants          # a folder: 5 or 500 resumes
+you> /add ~/Downloads/jane.pdf ~/Downloads/raj.docx   # or individual files (drag them in)
+
+# One-shot screening: the job description first, the resumes last
+python main.py screen --jd-file job.pdf --resumes ~/Downloads/backend-applicants
+python main.py screen "Senior React developer, 3+ years" --resumes jane.pdf raj.docx
 ```
 
-Every screening saves `reports/<role>-<timestamp>/summary.md` plus one detailed
-report per shortlisted candidate. Chat commands: `/report`, `/reset`, `/help`, `/exit`.
+Resumes can be PDF, DOCX, TXT, MD, scanned PDFs or PNG/JPG images. Every
+screening saves `reports/<role>-<timestamp>/summary.md` plus one detailed
+report per shortlisted candidate. Chat commands: `/resumes <folder>`,
+`/add <files>`, `/report`, `/reset`, `/help`, `/exit`.
+
+## Your resumes
+
+Give the agent a folder or individual resume files, at startup (`--resumes`) or
+at any point in the chat: `/resumes <folder>`, `/add <file> ...`, or in plain
+English ("screen the resumes in ~/Downloads/backend against ~/jobs/backend.pdf",
+"here are jane.pdf and raj.docx"). Dragging a file into the terminal pastes its
+path. The agent never ships with resumes of its own: if you describe a role
+before loading any, it notes the requirements and asks for resumes.
+
+- **One pool per folder.** Each folder gets its own index, so applicants for
+  different jobs never mix and a screening only ranks the active folder. Any
+  folder works, and only its top level is read. Loading new resumes keeps the
+  current role and re-screens against it.
+- **Uploaded files.** Files are copied into a batch under `UPLOADS_DIR`
+  (`~/.profile-match/uploads`); the originals are never touched. In chat, every
+  `/add` joins the same batch, so they are screened together. A batch is its
+  own pool; `/resumes <folder>` switches back to a folder.
+- **Automatic, incremental indexing.** New and changed files are indexed and
+  deleted ones removed. Unchanged files are recognised by size and modification
+  time without being read again.
+- **An intake report** says what is ready and what was left out, and why:
+
+  ```
+  Resumes in ~/Downloads/backend-applicants: 6 ready (6 new or changed, 0 unchanged).
+  Read 1 scanned file(s) with OCR: Jordan_Rivera_CV_scan.pdf.
+  Skipped 3 file(s):
+  - candidates.xlsx: Unsupported file type '.xlsx'. Supported: .docx, .jpeg, .jpg, .md, .pdf, .png, .txt
+  - empty.txt: No text could be extracted. The file may be empty or contain no readable text.
+  - old_resume.doc: Legacy Word .doc is not supported; save it as .docx or PDF
+  ```
+
+- **Scanned resumes.** PDFs without a text layer and PNG/JPG images are read
+  with OCR (RapidOCR, installed with pip; no system dependencies). Each is read
+  once, about a second per page. Without the OCR packages, scanned files are
+  reported with the install command.
+- **Long resumes** are trimmed by section before reaching the model. The
+  header, summary, experience, skills and education are kept whole, and only
+  lower-priority sections are cut.
+
+```bash
+python main.py index ~/Downloads/backend-applicants    # index or refresh a folder without screening
+python main.py list ~/Downloads/backend-applicants     # the candidates indexed from it
+```
 
 ## Architecture
 
@@ -46,9 +97,16 @@ graph TD
     route_intent -.->|refine| refine_requirements
     route_intent -.->|ask| assistant
     route_intent -.->|end| __end__([END])
+    route_intent -.->|"folder to load"| load_resumes
+    load_resumes -.->|new_search| parse_jd
+    load_resumes -.->|"re-screen current role"| search_resumes
+    load_resumes -.->|otherwise| human_feedback
     parse_jd --> extract_requirements
-    extract_requirements --> search_resumes
-    refine_requirements --> search_resumes
+    extract_requirements -.->|resumes loaded| search_resumes
+    extract_requirements -.->|no resumes yet| await_resumes
+    refine_requirements -.->|resumes loaded| search_resumes
+    refine_requirements -.->|no resumes yet| await_resumes
+    await_resumes --> human_feedback
     search_resumes --> rank_candidates
     rank_candidates -.->|"one Send per candidate"| assess_candidate
     rank_candidates -.->|"nothing to assess"| finalize_ranking
@@ -71,7 +129,9 @@ with the compiled graph.
 
 | Node | What it does |
 | --- | --- |
-| `route_intent` | Classifies each message: a new role (`new_search`), a change to the current requirements (`refine`), a question (`ask`) or goodbye (`end`). Exit words skip the model |
+| `route_intent` | Classifies each message: a new role (`new_search`), a change to the current requirements (`refine`), a question (`ask`) or goodbye (`end`), and picks out any resume folder, resume files or JD file it names. Exit words, `/resumes` and `/add` skip the model |
+| `load_resumes` | Activates a folder or uploads files, then starts the requested search, re-screens for the current role, or waits |
+| `await_resumes` | Requirements are set but no resumes are loaded: lists the requirements and asks for resumes |
 | `parse_jd` | Reads the latest message: JD text, a short request or a JD file path |
 | `extract_requirements` | Must-have vs nice-to-have requirements ([details](#requirements)) |
 | `refine_requirements` | Applies "make Kubernetes a must-have" to the current requirements, as a new version |
@@ -163,8 +223,10 @@ Across both models on the frontend JD, the ranking was identical (Kendall tau
 differed.
 
 ```bash
-python -m scripts.stability_check "Find me candidates with React and 3+ years experience" --runs 3
-python -m scripts.stability_check job_descriptions/frontend_react.txt --runs 2 --models gpt-5.6-terra,gpt-6-luna
+python -m scripts.generate_sample_resumes /tmp/sample_resumes     # see "Sample data"
+python -m scripts.stability_check "React and 3+ years experience" --resumes /tmp/sample_resumes --runs 3
+python -m scripts.stability_check tests/fixtures/job_descriptions/frontend_react.txt \
+    --resumes /tmp/sample_resumes --runs 2 --models gpt-5.6-terra,gpt-6-luna
 ```
 
 ## Iterative refinement
@@ -277,22 +339,25 @@ you> Write 3 interview questions for the top candidate
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Resume and query embeddings |
 | `OPENAI_TEMPERATURE` | provider default | Only for models that accept one |
 | `OPENAI_TIMEOUT` / `OPENAI_MAX_RETRIES` | `60` / `2` | Request limits |
-| `CHROMA_DB_DIR` | `chroma_db` | Vector index location |
+| `UPLOADS_DIR` | `~/.profile-match/uploads` | Where resumes given as files are copied, one batch per chat or file set |
+| `EMBEDDER` | `openai` | Embeddings for new folder indexes: `openai`, or `hashing` (offline, keyword overlap only) |
+| `CHROMA_DB_DIR` | `chroma_db` | Where the folder indexes are stored |
 | `REPORTS_DIR` | `reports` | Where reports are saved; the only directory the agent may write to |
 | `SHORTLIST_SIZE` | `10` | Candidates kept after round 1 |
 | `SCREENING_ROUNDS` | `3` | 1: retrieval only; 2: + deep analysis; 3: + hire / no-hire |
 | `SAVE_REPORTS` | `true` | Save reports after every screening |
 
-No API key? `python main.py index resumes --embedder hashing` builds an offline
-index for trying the retrieval commands (`index`, `list`, `match`). The agent
-itself needs a chat model.
+No API key? `python main.py index ~/applicants --embedder hashing` builds an
+offline index (also `EMBEDDER=hashing`) for trying `index` and `list`. The
+agent itself needs a chat model.
 
 ## Project layout
 
 | Path | Purpose |
 | --- | --- |
 | `matching_agent.py` | The LangGraph graph (`build_graph`), one-shot screening and chat entry point |
-| `main.py` | Single CLI: `index`, `stats`, `list`, `match`, `screen`, `chat` |
+| `main.py` | Single CLI: `chat`, `screen`, `index`, `list` |
+| `profile_matching/pools.py` | One resume pool per folder: indexing, incremental sync, intake report |
 | `profile_matching/agent/` | `state.py` (state, checkpointer), `nodes.py`, `routing.py`, `text.py` |
 | `profile_matching/screening.py` | The three screening rounds |
 | `profile_matching/guardrails.py` | Review items, evidence grounding, verdict bounds, rubric, decision rule, injection checks |
@@ -307,16 +372,16 @@ itself needs a chat model.
 | `profile_matching/schemas.py` | Pydantic models shared across the agent |
 | `profile_matching/prompts.py` | All prompt templates |
 | `profile_matching/services.py`, `candidates.py`, `config.py`, `markdown.py` | Shared dependencies, candidate lookup, settings, Markdown helpers |
-| `profile_matching/rag/` | Retrieval engine: `fs_tools` (read, list, search files), `resume_rag` (section chunking, metadata extraction, ChromaDB index), `job_matcher` (JD parsing, hybrid search, must-have checks), `skills_vocab` (skill aliases) |
-| `scripts/` | Resume dataset generator, stability check |
-| `resumes/`, `job_descriptions/` | 100 sample resumes (PDF, DOCX, TXT) and 3 sample JDs |
-| `tests/` | Offline pytest suite |
+| `profile_matching/rag/` | Retrieval engine: `fs_tools` (read, list, search files), `ocr` (scanned PDFs and images), `resume_rag` (section chunking, metadata extraction, ChromaDB index), `job_matcher` (JD parsing, hybrid search, must-have checks), `skills_vocab` (skill aliases) |
+| `scripts/` | Sample resume generator, stability check (development tools, not part of the product) |
+| `tests/` | Offline pytest suite; `tests/fixtures/` holds 12 sample resumes and 3 sample JDs |
 
-## Dataset
+## Sample data
 
-`resumes/` holds 100 fictional resumes:
-- 12 hand-written samples;
-- 88 seeded synthetic ones from `scripts/synthetic_resumes.py`.
+The repository ships no resumes. For demos and evaluation,
+`scripts/generate_sample_resumes.py` writes fictional resumes to any folder:
+- 12 hand-written samples (also the test fixtures);
+- seeded synthetic ones from `scripts/synthetic_resumes.py`, up to `--count`.
 
 The synthetic resumes cover:
 - **11 role families**: frontend, full-stack, Python and Java backend, data science, ML, data engineering, DevOps, iOS, Android and QA;
@@ -325,9 +390,13 @@ The synthetic resumes cover:
 - **edge cases**: career changers, missing degrees, certifications.
 
 ```bash
-python -m scripts.generate_sample_resumes                  # regenerate the 100
-python -m scripts.generate_sample_resumes out/ --count 250 --seed 7
+python -m scripts.generate_sample_resumes /tmp/sample_resumes             # 100 resumes
+python -m scripts.generate_sample_resumes /tmp/more --count 250 --seed 7
+python main.py chat --resumes /tmp/sample_resumes
 ```
+
+The same seed always produces the same resumes. The measurements and the
+sample session in this README use the default 100.
 
 ## Testing
 
@@ -381,5 +450,11 @@ built with a hashing embedder. It covers:
   mention it, so skills listed only in a Skills section are "unverified".
 - **Blind screening isn't implemented.** Names and contact details reach the
   model during deep analysis.
-- **Synthetic data.** The 100 resumes are synthetic, and the semantic score
-  range was calibrated on them.
+- **Synthetic data.** The semantic score range was calibrated on the generated
+  sample resumes; real resumes may need it re-tuned. OCR was tested on clean scans; low-quality
+  photos and handwriting will read worse.
+- **Unsupported formats.** Legacy `.doc`, `.rtf` and `.odt` aren't read; they
+  are reported so they can be converted. Subfolders of a resume folder aren't
+  read either.
+- **Uploads accumulate.** Upload batches under `UPLOADS_DIR` and their indexes
+  are kept until deleted by hand.

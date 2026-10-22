@@ -6,7 +6,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, trim
 from langchain_core.tools import BaseTool
 from langgraph.types import Send, interrupt
 
-from .. import changes, explainability, llm, prompts, reports, screening
+from .. import changes, explainability, llm, pools, prompts, reports, screening
 from ..rag import resume_rag
 from ..requirements import extract_requirements, load_job_description
 from ..schemas import ChangeNarrative, RankingDiff, Requirements
@@ -26,11 +26,12 @@ class PipelineNodes:
         self.services = services
 
     def parse_jd(self, state: AgentState) -> dict:
-        """Load the job description from the latest user message (text or a JD file path)."""
-        text = load_job_description(last_human_text(state)).strip()
+        """Load the job description: a JD file the router found in the message, otherwise
+        the latest user message itself (text or a JD file path)."""
+        text = load_job_description(state.get("jd_file") or last_human_text(state)).strip()
         if not text:
             raise ValueError("No job description given")
-        return {"job_description": text}
+        return {"job_description": text, "jd_file": None}
 
     def extract_requirements(self, state: AgentState) -> dict:
         """Split the JD into must-have and nice-to-have requirements."""
@@ -44,6 +45,20 @@ class PipelineNodes:
         instruction = f"Current requirements:\n{current.model_dump_json()}\n\nInstruction: {last_human_text(state)}"
         updated = llm.structured(Requirements, prompts.REFINE_REQUIREMENTS, instruction, model=self.services.model)
         return {"requirements": updated, "requirements_history": [updated]}
+
+    def resumes_loaded(self, state: AgentState) -> str:
+        """Conditional edge after the requirements: screen, or ask for resumes first."""
+        return "search_resumes" if self.services.pool is not None else "await_resumes"
+
+    def await_resumes(self, state: AgentState) -> dict:
+        """Requirements are set but no resumes are loaded: say what to do next."""
+        lines = reports.requirements_lines(state["requirements"])
+        return {"messages": [AIMessage(
+            f"Got it, screening for **{state['requirements'].role_title}**:\n\n"
+            + "\n".join(f"- {line}" for line in lines)
+            + "\n\nNo resumes are loaded yet. Give me a folder with `/resumes <folder>` or files with "
+            "`/add <file> ...` (you can drag files into the terminal), and I'll screen them."
+        )]}
 
     def search_resumes(self, state: AgentState) -> dict:
         """Round 1: score and check every indexed resume against the requirements."""
@@ -69,7 +84,7 @@ class PipelineNodes:
         tasks = [
             Send("assess_candidate", {"requirements": requirements, "match": match})
             for match in state["shortlist"]
-            if screening.assessment_key(requirements, match.id) not in cached
+            if screening.assessment_key(self.services.pool.id, requirements, match.id) not in cached
         ]
         return tasks or "finalize_ranking"
 
@@ -77,14 +92,16 @@ class PipelineNodes:
         """Round 2 for one candidate (runs in parallel with the others)."""
         requirements, match = task["requirements"], task["match"]
         assessment = screening.assess(self.services, requirements, match)
-        return {"assessments": {screening.assessment_key(requirements, match.id): assessment}}
+        return {"assessments": {screening.assessment_key(self.services.pool.id, requirements, match.id): assessment}}
 
     def finalize_ranking(self, state: AgentState) -> dict:
         """Re-rank the shortlist by final score (round 2), then decide hire or no-hire (round 3)."""
         rounds, requirements = self.services.settings.screening_rounds, state["requirements"]
         shortlist = state["shortlist"]
         if rounds >= 2:
-            shortlist = screening.apply_assessments(shortlist, requirements, state.get("assessments", {}))
+            shortlist = screening.apply_assessments(
+                self.services.pool.id, shortlist, requirements, state.get("assessments", {})
+            )
         if rounds >= 3:
             shortlist = screening.decide(self.services, requirements, shortlist)
         return {"shortlist": shortlist}
@@ -137,6 +154,27 @@ class ConversationNodes:
         self.services = services
         self.tools = tools
 
+    def load_resumes(self, state: AgentState) -> dict:
+        """Activate a folder, or upload files into this conversation's batch; earlier
+        results belonged to the previous resumes."""
+        batch = state.get("upload_folder") or pools.new_batch(self.services.settings.uploads_dir)
+        try:
+            report, uploaded_to = self.services.use_paths(state["load_paths"], batch=batch)
+        except (FileNotFoundError, NotADirectoryError, ValueError) as exc:
+            return {"load_paths": None, "load_error": str(exc),
+                    "messages": [AIMessage(f"I couldn't load those resumes: {exc}")]}
+        reply = report.summary()
+        requirements = state.get("requirements")
+        if state["intent"] != "new_search":
+            reply += (f"\n\nScreening them for {requirements.role_title}…" if requirements
+                      else "\n\nDescribe the role or give a job description to screen them.")
+        return {
+            "load_paths": None, "load_error": None, "resume_folder": report.folder,
+            "upload_folder": str(uploaded_to) if uploaded_to else state.get("upload_folder"),
+            "candidates": [], "shortlist": [], "previous_candidates": [], "previous_shortlist": [],
+            "ranking_diff": None, "messages": [AIMessage(reply)],
+        }
+
     @staticmethod
     def human_feedback(state: AgentState) -> dict:
         """Pause the graph until the user replies (resumed with ``Command(resume=text)``)."""
@@ -149,6 +187,11 @@ class ConversationNodes:
             state.get("requirements"), state.get("candidates", []), state.get("shortlist", []),
             state.get("ranking_diff"),
         )
+        pool = self.services.pool
+        source = state.get("resume_folder") or (resume_rag.display_path(str(pool.folder)) if pool else None)
+        loaded = (f"Resumes: {source} ({pool.size} resumes)." if pool
+                  else "No resumes are loaded yet.")
+        context = f"{loaded} The user loads resumes with /resumes <folder> or /add <files>.\n{context}"
         history = trim_messages(
             state["messages"], max_tokens=ASSISTANT_HISTORY, token_counter=len, start_on="human"
         )

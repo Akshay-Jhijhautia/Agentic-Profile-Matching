@@ -17,8 +17,22 @@ from pathlib import Path
 from .rag import fs_tools, resume_rag
 
 _SEPARATORS_RE = re.compile(r"[\s_\-]+")
-# Resume text sent to the LLM, enough for any realistic resume.
+# Resume text sent to the LLM; longer resumes are trimmed section by section.
 MAX_RESUME_CHARS = 6_000
+# Sections kept first when a resume is too long (the rest follow in document order).
+SECTION_PRIORITY = ("Header", "General", "Summary", "Experience", "Skills", "Education")
+
+
+def trim_resume(text: str, max_chars: int) -> str:
+    """``text`` within ``max_chars``, keeping whole sections in ``SECTION_PRIORITY``
+    order and cutting only the last one that does not fit."""
+    if len(text) <= max_chars:
+        return text
+    rank = {name: i for i, name in enumerate(SECTION_PRIORITY)}
+    ordered = sorted(resume_rag.split_sections(text).items(), key=lambda item: rank.get(item[0], len(rank)))
+    blocks = [body if name in {"Header", "General"} else f"{name.upper()}\n{body}" for name, body in ordered]
+    # Priority order puts what matters least last, so the cut only ever lands there.
+    return "\n\n".join(blocks)[:max_chars]
 
 
 class CandidateNotFoundError(LookupError):
@@ -26,7 +40,8 @@ class CandidateNotFoundError(LookupError):
 
 
 def candidate_id(resume_path: str) -> str:
-    return Path(resume_path).stem.removeprefix("resume_")
+    """``resumes/Resume_Jane_Doe.pdf`` -> ``jane_doe``: the file stem, lower-cased, without ``resume_``."""
+    return Path(resume_path).stem.lower().removeprefix("resume_")
 
 
 def _normalize(text: str) -> str:
@@ -109,8 +124,8 @@ class CandidateDirectory:
 
     @staticmethod
     def resume_text(profile: CandidateProfile, max_chars: int | None = MAX_RESUME_CHARS) -> str:
-        """The resume's text, cut to ``max_chars`` (None for all of it)."""
+        """The resume's text, trimmed section by section to ``max_chars`` (None for all of it)."""
         result = fs_tools.read_file(profile.resume_path)
         if not result["success"]:
             raise FileNotFoundError(f"Could not read {profile.name}'s resume: {result['error']}")
-        return result["content"][:max_chars]
+        return result["content"] if max_chars is None else trim_resume(result["content"], max_chars)

@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 import pytest
@@ -196,40 +195,3 @@ def test_details_add_breakdown(matcher):
         details["semantic_score"], details["keyword_score"], details["skill_coverage"]
     )
     assert result["top_matches"][0]["match_score"] == round(100 * expected)
-
-
-# --- CLI ----------------------------------------------------------------------------------------------
-
-
-def test_cli_writes_json(hashing_db, tmp_path, capsys):
-    out = tmp_path / "results" / "match.json"
-    code = job_matcher.main(
-        ["--db", hashing_db, "--jd-file", str(JD_DIR / "frontend_react.txt"), "--k", "2", "--out", str(out)]
-    )
-    assert code == 0
-    printed = json.loads(capsys.readouterr().out)
-    assert json.loads(out.read_text()) == printed
-    assert [m["candidate_name"] for m in printed["top_matches"]][0] == "Maria Garcia"
-
-
-def test_cli_inline_jd_with_must_have(hashing_db, capsys):
-    code = job_matcher.main(["--db", hashing_db, "--jd", "Python engineer", "--must-have", "degree:phd"])
-    assert code == 0
-    assert _names(json.loads(capsys.readouterr().out)) == ["Priya Patel"]
-
-
-@pytest.mark.parametrize(
-    "args, message",
-    [
-        (["--jd", "x", "--must-have", "degree:wizard"], "Unknown degree"),
-        (["--jd-file", "missing_jd.txt"], "Could not read job description"),
-    ],
-)
-def test_cli_errors(hashing_db, capsys, args, message):
-    assert job_matcher.main(["--db", hashing_db, *args]) == 1
-    assert message in capsys.readouterr().err
-
-
-def test_cli_empty_index(tmp_path, capsys):
-    assert job_matcher.main(["--db", str(tmp_path / "db"), "--jd", "Python"]) == 1
-    assert "is empty" in capsys.readouterr().err

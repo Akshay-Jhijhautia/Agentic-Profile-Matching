@@ -5,9 +5,10 @@ model, and across all models together: top-k overlap and Kendall tau between
 runs, hire/no-hire agreement, the spread of each candidate's deep score, and
 whether the requirements came out the same.
 
-Run from the project root:
-    python -m scripts.stability_check "Find me candidates with React and 3+ years experience" --runs 3
-    python -m scripts.stability_check jd.txt --runs 2 --models gpt-5.6-terra,gpt-6-luna
+Run from the project root, e.g. on the generated sample resumes:
+    python -m scripts.generate_sample_resumes /tmp/sample_resumes
+    python -m scripts.stability_check "React and 3+ years experience" --resumes /tmp/sample_resumes --runs 3
+    python -m scripts.stability_check jd.txt --resumes /tmp/sample_resumes --models gpt-5.6-terra,gpt-6-luna
 """
 
 from __future__ import annotations
@@ -87,6 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     parser = argparse.ArgumentParser(description="Repeat a screening and measure how stable it is.")
     parser.add_argument("jd", help="Job description text, a short request or a JD file path.")
+    parser.add_argument("--resumes", required=True, help="Folder of resumes to screen.")
     parser.add_argument("--runs", type=int, default=3, help="Identical runs per model (default: 3).")
     parser.add_argument("--models", help="Comma-separated models to compare (default: OPENAI_MODEL).")
     args = parser.parse_args(argv)
@@ -95,6 +97,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("need at least two runs in total")
     try:
         services = Services.from_settings()
+        print(services.use_folder(args.resumes).summary(), file=sys.stderr)
         services.check_ready()
     except resume_rag.CLI_ERRORS as exc:
         print(f"Error: {resume_rag.cli_error_message(exc)}", file=sys.stderr)

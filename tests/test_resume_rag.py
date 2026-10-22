@@ -40,15 +40,17 @@ def test_load_resumes_reads_all_samples():
     assert all(r["content"].strip() for r in resumes)
 
 
-def test_load_resumes_skips_bad_and_unsupported_files(tmp_path, caplog):
+def test_read_folder_returns_skipped_files_with_reasons(tmp_path):
     (tmp_path / "good.txt").write_text("Jane Doe\nSKILLS\nPython", encoding="utf-8")
     (tmp_path / "broken.pdf").write_bytes(b"not a pdf")
     (tmp_path / "empty.txt").write_text("   ", encoding="utf-8")
-    (tmp_path / "photo.png").write_bytes(b"\x89PNG")
-    resumes = resume_rag.load_resumes(str(tmp_path))
-    assert [r["file_name"] for r in resumes] == ["good.txt"]
-    assert "broken.pdf" in caplog.text
-    assert "empty.txt" in caplog.text
+    (tmp_path / "notes.xlsx").write_bytes(b"PK")
+    resumes, skipped = resume_rag.read_folder(str(tmp_path))
+    assert [r["file_name"] for r in resumes] == ["good.txt"] and resumes[0]["ocr"] is False
+    reasons = {item["file"]: item["reason"] for item in skipped}
+    assert set(reasons) == {"broken.pdf", "empty.txt", "notes.xlsx"}
+    assert "Unsupported file type '.xlsx'" in reasons["notes.xlsx"]
+    assert resume_rag.load_resumes(str(tmp_path)) == resumes
 
 
 def test_load_resumes_missing_directory_raises(tmp_path):

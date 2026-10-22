@@ -99,6 +99,12 @@ only nice to have").
 interview questions, candidate details, saving a report, general questions.
 - end: they say they are finished.
 
+Also extract any folder or resume files the user wants screened ("screen the \
+resumes in ~/Downloads/backend", "here are jane.pdf and raj.docx") into \
+resume_paths, and any job description file path into job_file, exactly as \
+written; otherwise leave them empty or null. Resumes given together with a \
+role, JD text or JD file are a new_search; resumes alone are ask.
+
 The input gives the current role (or none), the assistant's previous message \
 and the user's latest message."""
 

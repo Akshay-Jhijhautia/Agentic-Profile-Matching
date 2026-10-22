@@ -56,6 +56,12 @@ class AgentState(TypedDict, total=False):
     report: str
     report_dir: str | None  # where the latest reports were saved
     intent: str  # the latest routing decision (see ``routing.ROUTES``)
+    resume_folder: str  # what is being screened: a folder, or "your uploaded resumes"
+    upload_folder: str | None  # this conversation's uploads batch, added to by every upload
+    # Set by the router for this turn only: resumes to load and a JD file to read.
+    load_paths: list[str] | None
+    jd_file: str | None
+    load_error: str | None
 
 
 # Our types stored in checkpoints. LangGraph only restores allow-listed types

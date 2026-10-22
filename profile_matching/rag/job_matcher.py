@@ -15,25 +15,15 @@ The candidate pool is the union of the semantic and keyword hits, so a resume
 with an exact critical skill is not missed when its embedding ranks low.
 Candidates failing a must-have are filtered out; the rest get a 0-100
 match score, matched skills, relevant excerpts and a written reasoning.
-
-CLI (via the project entry point):
-    python main.py match --jd-file job_descriptions/senior_python_ml.txt [--k 10]
-        [--must-have "Python:5"] [--ignore-jd-requirements] [--include-filtered]
-        [--details] [--out results/match.json]
 """
 
 from __future__ import annotations
 
-import argparse
-import json
-import logging
 import re
-import sys
 
-from dotenv import load_dotenv
 from rank_bm25 import BM25Okapi
 
-from . import fs_tools, resume_rag, skills_vocab
+from . import resume_rag, skills_vocab
 
 TOP_K = 10
 # Resumes taken from the keyword ranking into the hybrid pool.
@@ -676,75 +666,3 @@ def build_reasoning(candidate: dict, score: int, checks: list[dict]) -> str:
     if years is not None:
         sentences.append(f"{years:g} years of total experience")
     return ". ".join(sentences) + "."
-
-
-# --- CLI ------------------------------------------------------------------------------------------
-
-
-def _read_job_description(args: argparse.Namespace) -> str:
-    if args.jd:
-        return args.jd
-    result = fs_tools.read_file(args.jd_file)
-    if not result["success"]:
-        raise FileNotFoundError(f"Could not read job description: {result['error']}")
-    return result["content"]
-
-
-def main(argv: list[str] | None = None) -> int:
-    load_dotenv()
-    logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
-
-    parser = argparse.ArgumentParser(description="Match a job description against indexed resumes.")
-    source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--jd", help="Job description text.")
-    source.add_argument("--jd-file", help="Job description file (TXT, MD, PDF or DOCX).")
-    parser.add_argument("--k", type=int, default=TOP_K, help=f"Number of matches (default: {TOP_K}).")
-    parser.add_argument(
-        "--must-have", action="append", default=[], metavar="SPEC",
-        help='Extra requirement, repeatable: "Python:5", "Python", "experience:5", "degree:masters".',
-    )
-    parser.add_argument(
-        "--ignore-jd-requirements", action="store_true",
-        help="Do not apply must-haves parsed from the JD text (only --must-have).",
-    )
-    parser.add_argument("--include-filtered", action="store_true", help="List candidates removed by must-haves.")
-    parser.add_argument("--details", action="store_true", help="Add requirements and score breakdowns.")
-    parser.add_argument("--out", help="Also write the JSON to this file.")
-    parser.add_argument("--db", default=resume_rag.DEFAULT_DB_DIR, help="ChromaDB directory.")
-    args = parser.parse_args(argv)
-    if args.k < 1:
-        parser.error("--k must be at least 1")
-
-    try:
-        must_haves = [parse_must_have_spec(spec) for spec in args.must_have]
-        job_description = _read_job_description(args)
-        rag = resume_rag.ResumeRAG(args.db)
-        if rag.collection.count() == 0:
-            raise ValueError(f"The index at '{args.db}' is empty. Run: python main.py index resumes")
-        if resume_rag.missing_api_key(rag.embedder_name):
-            raise ValueError(f"OPENAI_API_KEY is not set (the index uses {rag.embedder_name}).")
-        result = JobMatcher(rag).match(
-            job_description,
-            k=args.k,
-            must_haves=must_haves,
-            use_jd_must_haves=not args.ignore_jd_requirements,
-            include_filtered=args.include_filtered,
-            details=args.details,
-        )
-    except resume_rag.CLI_ERRORS as exc:
-        print(f"Error: {resume_rag.cli_error_message(exc)}", file=sys.stderr)
-        return 1
-
-    text = json.dumps(result, indent=2, ensure_ascii=False)
-    print(text)
-    if args.out:
-        written = fs_tools.write_file(args.out, text + "\n")
-        if not written["success"]:
-            print(f"Error: {written['error']}", file=sys.stderr)
-            return 1
-        print(f"Saved to {resume_rag.display_path(written['filepath'])}", file=sys.stderr)
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
