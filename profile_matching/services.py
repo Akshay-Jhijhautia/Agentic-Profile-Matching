@@ -7,6 +7,7 @@ and a fake chat model by constructing ``Services`` directly.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from functools import cached_property
 
@@ -31,6 +32,16 @@ class Services:
     @cached_property
     def candidates(self) -> CandidateDirectory:
         return CandidateDirectory(self.rag)
+
+    def check_ready(self) -> None:
+        """Raise ``ValueError`` with a fix when the index is empty or the API key is missing."""
+        if self.rag.collection.count() == 0:
+            raise ValueError(
+                f"The index at '{self.rag.persist_dir}' is empty. Run: python main.py index resumes"
+            )
+        chat_needs_key = self.model is None and not os.getenv("OPENAI_API_KEY")
+        if chat_needs_key or resume_rag.missing_api_key(self.rag.embedder_name):
+            raise ValueError("OPENAI_API_KEY is not set. Add it to .env (see .env.example).")
 
     @classmethod
     def from_settings(cls, settings: Settings | None = None) -> Services:

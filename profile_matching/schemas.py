@@ -9,8 +9,9 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
+from .candidates import candidate_id
 from .rag import skills_vocab
 
 # Matches ``resume_rag.DEGREE_LEVELS`` so degree must-haves reuse its checks.
@@ -169,3 +170,74 @@ class InterviewQuestion(BaseModel):
 
 class InterviewQuestions(BaseModel):
     questions: list[InterviewQuestion]
+
+
+# --- screening results ---------------------------------------------------------------------------
+
+CheckStatus = Literal["met", "not_met", "unverified"]
+
+
+class MustHaveCheck(BaseModel):
+    requirement: str
+    status: CheckStatus
+    detail: str
+
+
+class ScoreBreakdown(BaseModel):
+    """The hybrid score's inputs, each 0..1 (skill_coverage is None without must-have skills)."""
+
+    semantic: float
+    keyword: float
+    skill_coverage: float | None
+
+
+class CandidateMatch(BaseModel):
+    """One candidate scored and checked against the current requirements."""
+
+    id: str
+    name: str
+    resume: str
+    rank: int = 0  # set by ``screening.rank_matches``; 1 is best
+    match_score: int
+    failed_requirements: list[str]
+    must_have_checks: list[MustHaveCheck]
+    matched_skills: list[str]
+    missing_must_haves: list[str]
+    score_breakdown: ScoreBreakdown
+    experience_years: float | None
+    highest_degree: str | None
+    reasoning: str
+    excerpts: list[str]
+
+    @computed_field
+    @property
+    def passes_must_haves(self) -> bool:
+        return not self.failed_requirements
+
+    @property
+    def unverified(self) -> list[str]:
+        return [c.detail for c in self.must_have_checks if c.status == "unverified"]
+
+    @classmethod
+    def from_evaluation(cls, result: dict) -> CandidateMatch:
+        """From one ``JobMatcher.evaluate`` result."""
+        details = result["details"]
+        return cls(
+            id=candidate_id(result["resume_path"]),
+            name=result["candidate_name"],
+            resume=result["resume_path"],
+            match_score=result["match_score"],
+            failed_requirements=result["failed_requirements"],
+            must_have_checks=details["must_have_checks"],
+            matched_skills=result["matched_skills"],
+            missing_must_haves=details["missing_skills"],
+            score_breakdown=ScoreBreakdown(
+                semantic=details["semantic_score"],
+                keyword=details["keyword_score"],
+                skill_coverage=details["skill_coverage"],
+            ),
+            experience_years=details["experience_years"],
+            highest_degree=details["highest_degree"],
+            reasoning=result["reasoning"],
+            excerpts=result["relevant_excerpts"],
+        )

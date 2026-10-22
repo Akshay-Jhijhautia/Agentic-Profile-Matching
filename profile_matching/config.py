@@ -26,6 +26,8 @@ class Settings:
     db_dir: str = resume_rag.DEFAULT_DB_DIR
     # The only directory the agent may write to (reports, summaries).
     reports_dir: str = "reports"
+    # Candidates kept after the initial screen.
+    shortlist_size: int = 10
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -37,6 +39,7 @@ class Settings:
             llm_max_retries=int(os.getenv("OPENAI_MAX_RETRIES") or defaults.llm_max_retries),
             db_dir=os.getenv("CHROMA_DB_DIR") or defaults.db_dir,
             reports_dir=os.getenv("REPORTS_DIR") or defaults.reports_dir,
+            shortlist_size=int(os.getenv("SHORTLIST_SIZE") or defaults.shortlist_size),
         )
 
 

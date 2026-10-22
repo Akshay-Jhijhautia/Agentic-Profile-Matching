@@ -555,7 +555,13 @@ def check_must_haves(metadata: dict, must_haves: list[dict]) -> list[dict]:
             elif req["type"] == "skill":
                 status, detail = "met", f"has {req['skill']}"
             elif skill not in skill_years:
-                status, detail = "unverified", f"lists {req['skill']} but years unclear (needs {label})"
+                # Undated skill: unverified, unless the whole career is too short for it.
+                total = metadata["experience_years"]
+                if total is not None and total < req["min_years"]:
+                    status = "not_met"
+                    detail = f"lists {req['skill']} but has {total:g} yrs total experience (needs {label})"
+                else:
+                    status, detail = "unverified", f"lists {req['skill']} but years unclear (needs {label})"
             else:
                 years = skill_years[skill]
                 status = "met" if years >= req["min_years"] else "not_met"

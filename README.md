@@ -30,6 +30,10 @@ python main.py index resumes                    # build or refresh the vector in
 python main.py index resumes --embedder hashing # offline index (keyword-overlap embeddings)
 python main.py stats | list                     # inspect the index
 python main.py match --jd-file job_descriptions/frontend_react.txt   # non-agent ranking
+
+# The matching agent (one-shot screening of the whole index)
+python matching_agent.py --jd-file job_descriptions/frontend_react.txt
+python main.py screen "Find me candidates with React and 3+ years experience" --out reports/react.md
 ```
 
 ## Project layout
@@ -46,6 +50,10 @@ python main.py match --jd-file job_descriptions/frontend_react.txt   # non-agent
 | `profile_matching/candidates.py` | `CandidateDirectory`: resolve candidates by id, name or part of a name |
 | `profile_matching/analysis.py` | Head-to-head comparison and interview questions (facts + LLM reasoning) |
 | `profile_matching/tools/` | The agent's tools, built per `Services` by factories (`make_tools`) |
+| `matching_agent.py` | The LangGraph agent: graph wiring (`build_graph`) and one-shot CLI |
+| `profile_matching/agent/` | Agent state (`AgentState`, checkpointer) and graph nodes |
+| `profile_matching/screening.py` | Screening rounds: score every resume, rank, shortlist |
+| `profile_matching/reports.py` | Markdown shortlist report and chat summary |
 | `main.py` | Single CLI entry point |
 | `resumes/` | Demo dataset: 100 resumes (12 hand-written + 88 synthetic) in PDF, DOCX and TXT |
 | `job_descriptions/` | Sample job descriptions |
@@ -77,6 +85,32 @@ and durations or degrees listed as skills are discarded. Ranking reuses the
 Milestone 2 matcher through `JobMatcher.match_parsed(requirements.to_parsed())`.
 Its search text is built from the requirements, so a short request searches
 like a full job description.
+
+## The matching agent
+
+```
+START → parse_jd → extract_requirements → search_resumes → rank_candidates → generate_report → END
+```
+
+| Node | What it does |
+| --- | --- |
+| `parse_jd` | Takes the latest user message: JD text, a short request or a JD file path |
+| `extract_requirements` | Must-have vs nice-to-have (see below); every version is kept in `requirements_history` |
+| `search_resumes` | Round 1: scores and checks **every** indexed resume (not a retrieval pool) |
+| `rank_candidates` | Candidates passing every must-have, best score first; keeps the top `SHORTLIST_SIZE` |
+| `generate_report` | Markdown report (requirements, ranking table, reasoning, closest knocked-out candidates) and a chat summary |
+
+The state (`profile_matching/agent/state.py`) holds the conversation
+(`messages`), the job understanding (`job_description`, `requirements`,
+`requirements_history`) and the results (`candidates` with every resume
+ranked, the `shortlist` with each candidate's reasoning, `previous_shortlist`,
+`report`). `make_checkpointer()` registers the state's Pydantic types with
+LangGraph's serializer, so checkpoints restore without deserialization
+warnings.
+
+A skill listed without dated experience is `unverified` (kept, flagged), unless
+the candidate's whole career is shorter than the years required, in which case
+it is `not_met`.
 
 ## Agent tools
 

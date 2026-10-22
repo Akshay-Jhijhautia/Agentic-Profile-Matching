@@ -65,6 +65,8 @@ META = {
         ("Python:5", "met"),
         ("Go:3", "not_met"),
         ("Docker:2", "unverified"),  # listed, but no role mentions it
+        ("Docker:7", "unverified"),  # career (7 yrs) is long enough to allow it
+        ("Docker:8", "not_met"),  # listed, but the whole career is shorter than 8 yrs
         ("Rust:1", "not_met"),
         ("Docker", "met"),
         ("Rust", "not_met"),

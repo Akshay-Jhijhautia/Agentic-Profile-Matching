@@ -3,6 +3,7 @@
     python main.py index [resumes/] [options]   build or refresh the vector index
     python main.py stats | list                 inspect the index
     python main.py match --jd-file JD [options] rank resumes for a job description (no agent)
+    python main.py screen --jd-file JD | "request"  run the matching agent's screening pipeline
 
 Each command forwards its options to the module that implements it; add
 ``--help`` after a command to see them.
@@ -13,6 +14,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Callable
 
+import matching_agent
 from profile_matching.rag import job_matcher, resume_rag
 
 # Command name -> handler taking the remaining argv. Index commands keep their
@@ -22,6 +24,7 @@ COMMANDS: dict[str, Callable[[list[str]], int]] = {
     "stats": lambda rest: resume_rag.main(["stats", *rest]),
     "list": lambda rest: resume_rag.main(["list", *rest]),
     "match": job_matcher.main,
+    "screen": matching_agent.main,
 }
 
 

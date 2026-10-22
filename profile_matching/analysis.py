@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import json
 
-from . import llm, prompts
-from .candidates import CandidateNotFoundError, CandidateProfile, candidate_id
+from . import llm, prompts, screening
+from .candidates import CandidateNotFoundError, CandidateProfile
 from .schemas import ComparisonVerdict, InterviewQuestions, Requirements
 from .services import Services
 
@@ -34,41 +34,26 @@ def _check_range(name: str, value: int, limits: tuple[int, int]) -> None:
         raise ValueError(f"{name} must be between {low} and {high}, got {value}")
 
 
+# Match fields shown next to a candidate's profile in comparisons and prompts.
+FACT_FIELDS = {
+    "rank", "match_score", "passes_must_haves", "must_have_checks", "matched_skills",
+    "missing_must_haves", "score_breakdown", "reasoning",
+}
+
+
 def candidate_facts(
     services: Services, profiles: list[CandidateProfile], requirements: Requirements | None
 ) -> list[dict]:
     """Each profile's summary and, given requirements, how it matches them.
 
-    With requirements, candidates are ranked among themselves: those passing
-    every must-have first, then by match score. Without, the order is kept.
+    With requirements, candidates are ranked among themselves (see
+    ``screening.rank_matches``). Without, the given order is kept.
     """
     facts = {profile.id: profile.summary() for profile in profiles}
     if requirements is None:
         return list(facts.values())
-
-    evaluated = services.matcher.evaluate(
-        requirements.to_parsed(), resume_paths=[p.resume_path for p in profiles]
-    )
-    evaluated.sort(key=lambda r: (bool(r["failed_requirements"]), -r["match_score"]))
-    ranked = []
-    for rank, result in enumerate(evaluated, 1):
-        details = result["details"]
-        fact = facts[candidate_id(result["resume_path"])] | {
-            "rank": rank,
-            "match_score": result["match_score"],
-            "passes_must_haves": not result["failed_requirements"],
-            "must_have_checks": details["must_have_checks"],
-            "matched_skills": result["matched_skills"],
-            "missing_must_haves": details["missing_skills"],
-            "score_breakdown": {
-                "semantic": details["semantic_score"],
-                "keyword": details["keyword_score"],
-                "skill_coverage": details["skill_coverage"],
-            },
-            "reasoning": result["reasoning"],
-        }
-        ranked.append(fact)
-    return ranked
+    matches = screening.evaluate(services, requirements, profiles)
+    return [facts[m.id] | m.model_dump(include=FACT_FIELDS) for m in matches]
 
 
 def _llm_payload(requirements: Requirements | None, **sections) -> str:
