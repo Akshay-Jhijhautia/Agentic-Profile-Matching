@@ -110,8 +110,12 @@ def test_keyword_hit_outside_semantic_pool_is_added(matcher, monkeypatch):
 
     sofia = _by_name(matcher.hybrid_search(jd))["Sofia Rossi"]
     assert sofia["matched_skills"] == ["Flutter"]
-    assert sofia["chunks"]  # semantic score filled from her own chunks
-    assert sofia["semantic_score"] == pytest.approx(sofia["chunks"][0]["similarity"], abs=1e-4)
+    # Semantic score filled from all of her own chunks, blended like any other candidate's.
+    sims = [c["similarity"] for c in sofia["chunks"]]
+    top = sims[: job_matcher.TOP_CHUNKS_FOR_MEAN]
+    expected = job_matcher.BEST_CHUNK_WEIGHT * sims[0] + (1 - job_matcher.BEST_CHUNK_WEIGHT) * sum(top) / len(top)
+    assert len(sims) > 1
+    assert sofia["semantic_score"] == pytest.approx(expected, abs=1e-4)
 
 
 def test_semantic_candidates_restricted_to_paths(matcher):
@@ -133,3 +137,26 @@ def test_calibrate_semantic():
 
 def test_hybrid_search_k_none_returns_whole_pool(matcher):
     assert len(matcher.hybrid_search(_jd("java_backend"), k=None)) == 12
+
+
+def test_hybrid_search_restricted_to_resume_paths(matcher):
+    paths = [p for p in matcher.rag.indexed_paths() if "alex_lee" in p or "maria_garcia" in p]
+    results = matcher.hybrid_search("Kubernetes platform engineer", k=None, resume_paths=paths)
+    assert {r["resume_path"] for r in results} == set(paths)
+
+
+def test_evaluate_keeps_candidates_that_fail_must_haves(matcher):
+    parsed = job_matcher.parse_job_description("Backend engineer.\nRequirements:\n- 5+ years of Java")
+    results = matcher.evaluate(parsed)
+    failed = [r for r in results if r["failed_requirements"]]
+    passed = [r for r in results if not r["failed_requirements"]]
+    assert failed and passed
+    assert all("details" in r for r in results)
+    output = matcher.match_parsed(parsed, k=len(results), include_filtered=True)
+    assert len(output["top_matches"]) == len(passed)
+    assert len(output["filtered_out"]) == len(failed)
+
+
+def test_keyword_scores_are_plain_floats(matcher):
+    scores = matcher.keyword_scores(job_matcher.parse_job_description("Python and Kubernetes"))
+    assert scores and all(type(score) is float for score in scores.values())

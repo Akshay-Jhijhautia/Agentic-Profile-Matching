@@ -18,11 +18,12 @@ deterministic passes then make the result safe to use as knockout filters:
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from langchain_core.language_models import BaseChatModel
 
 from . import llm, prompts
-from .rag import job_matcher, skills_vocab
+from .rag import fs_tools, job_matcher, skills_vocab
 from .schemas import Requirements
 
 # Clause boundaries for spotting alternatives: "PyTorch or TensorFlow and
@@ -98,6 +99,17 @@ def apply_knockout_policy(requirements: Requirements, text: str, rules: dict) ->
             "min_degree": requirements.min_degree if degree_required(rules) else None,
         }
     )
+
+
+def load_job_description(text_or_path: str) -> str:
+    """The text itself, or the contents when it names a readable JD file."""
+    candidate = text_or_path.strip()
+    if "\n" not in candidate and Path(candidate).suffix.lower() in fs_tools.SUPPORTED_READ_EXTENSIONS:
+        result = fs_tools.read_file(candidate)
+        if not result["success"]:
+            raise FileNotFoundError(f"Could not read job description: {result['error']}")
+        return result["content"]
+    return text_or_path
 
 
 def extract_requirements(text: str, *, model: BaseChatModel | None = None) -> Requirements:

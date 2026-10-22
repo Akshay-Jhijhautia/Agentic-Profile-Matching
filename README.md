@@ -42,6 +42,10 @@ python main.py match --jd-file job_descriptions/frontend_react.txt   # non-agent
 | `profile_matching/schemas.py` | Pydantic models shared by the LLM layer, tools and graph (`Requirements`, ...) |
 | `profile_matching/prompts.py` | All prompt templates |
 | `profile_matching/requirements.py` | `extract_requirements`: LLM extraction + rule floor + knockout policy |
+| `profile_matching/services.py` | `Services`: the index, matcher, candidate directory, settings and chat model shared by tools and graph |
+| `profile_matching/candidates.py` | `CandidateDirectory`: resolve candidates by id, name or part of a name |
+| `profile_matching/analysis.py` | Head-to-head comparison and interview questions (facts + LLM reasoning) |
+| `profile_matching/tools/` | The agent's tools, built per `Services` by factories (`make_tools`) |
 | `main.py` | Single CLI entry point |
 | `resumes/` | Demo dataset: 100 resumes (12 hand-written + 88 synthetic) in PDF, DOCX and TXT |
 | `job_descriptions/` | Sample job descriptions |
@@ -73,6 +77,30 @@ and durations or degrees listed as skills are discarded. Ranking reuses the
 Milestone 2 matcher through `JobMatcher.match_parsed(requirements.to_parsed())`.
 Its search text is built from the requirements, so a short request searches
 like a full job description.
+
+## Agent tools
+
+`make_tools(services)` builds every tool the agent can call. Each tool takes
+its description and argument docs from its docstring. Expected failures, such
+as an unknown candidate or an unreadable file, are returned to the model as
+`{"success": false, "error": ...}` so it can recover.
+
+| Tool | Purpose |
+| --- | --- |
+| `read_file`, `list_files`, `search_in_file` | Milestone 1 file tools (read anywhere) |
+| `write_file` | Save Markdown/text, only inside `REPORTS_DIR` |
+| `rag_search(query, k)` | Milestone 2 hybrid search for open questions |
+| `extract_requirements(jd)` | Must-have vs nice-to-have from JD text, a request or a JD file |
+| `compare_candidates(candidate_ids)` | 2–5 candidates head to head: scores, must-have checks, LLM verdict |
+| `generate_interview_questions(candidate_id, count)` | Questions aimed at the candidate's gaps, unverified claims and strengths |
+
+Candidates are referred to by id (the resume file stem without `resume_`, e.g.
+`maria_garcia`), full name or a unique part of a name. An ambiguous reference
+("Rafael") lists the matching ids instead of guessing. The comparison and
+interview tools read the current role from the agent's state, so the model
+never passes requirements around. Their deterministic facts (scores,
+must-have checks) are returned with the LLM's reasoning, so every claim can be
+traced back.
 
 ## Dataset
 

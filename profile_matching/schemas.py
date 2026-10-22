@@ -138,3 +138,34 @@ class Requirements(BaseModel):
             "preferred_skills": list(self.nice_to_have),
             "must_haves": self.to_must_haves(),
         }
+
+
+# --- candidate analysis (LLM output) ---------------------------------------------------------
+
+
+class CandidateNote(BaseModel):
+    candidate_id: str = Field(description="The candidate's id exactly as given in the input.")
+    strengths: list[str] = Field(description="Concrete strengths for this role, citing resume evidence.")
+    weaknesses: list[str] = Field(description="Gaps or risks for this role, citing resume evidence.")
+
+
+class ComparisonVerdict(BaseModel):
+    ranking: list[str] = Field(description="Candidate ids, best fit first.")
+    notes: list[CandidateNote] = Field(description="One entry per candidate.")
+    summary: str = Field(
+        description="Two to four sentences naming the best fit and the decisive differences."
+    )
+
+
+class InterviewQuestion(BaseModel):
+    question: str = Field(description="The question, specific to this candidate's resume.")
+    focus: str = Field(description="The skill or topic the question probes.")
+    purpose: Literal["close_gap", "verify_claim", "assess_depth"] = Field(
+        description="close_gap: a missing requirement; verify_claim: a skill listed without "
+        "clear evidence; assess_depth: a strength worth probing."
+    )
+    strong_answer: str = Field(description="What a strong answer would cover.")
+
+
+class InterviewQuestions(BaseModel):
+    questions: list[InterviewQuestion]

@@ -6,7 +6,8 @@ from profile_matching.config import Settings
 from profile_matching.schemas import SkillRequirement
 from tests.fakes import FakeChatModel
 
-ENV_VARS = ("OPENAI_MODEL", "OPENAI_TEMPERATURE", "OPENAI_TIMEOUT", "OPENAI_MAX_RETRIES", "CHROMA_DB_DIR")
+ENV_VARS = ("OPENAI_MODEL", "OPENAI_TEMPERATURE", "OPENAI_TIMEOUT", "OPENAI_MAX_RETRIES", "CHROMA_DB_DIR",
+            "REPORTS_DIR")
 
 
 @pytest.fixture
@@ -26,7 +27,8 @@ def test_settings_from_env(clean_env):
     clean_env.setenv("OPENAI_TIMEOUT", "5")
     clean_env.setenv("OPENAI_MAX_RETRIES", "0")
     clean_env.setenv("CHROMA_DB_DIR", "/tmp/db")
-    assert Settings.from_env() == Settings("gpt-test", 0.3, 5.0, 0, "/tmp/db")
+    clean_env.setenv("REPORTS_DIR", "/tmp/reports")
+    assert Settings.from_env() == Settings("gpt-test", 0.3, 5.0, 0, "/tmp/db", "/tmp/reports")
 
 
 def test_empty_temperature_means_provider_default(clean_env):

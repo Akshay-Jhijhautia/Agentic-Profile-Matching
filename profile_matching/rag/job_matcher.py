@@ -50,6 +50,8 @@ REQUIRED_SKILL_BOOST = 2
 # sample JD/resume pairs measured 0.34 (unrelated) to 0.62 (near-perfect fit).
 SEMANTIC_RANGES = {"openai": (0.30, 0.65), "hashing": (0.0, 0.50)}
 DEFAULT_SEMANTIC_RANGE = (0.0, 1.0)
+# Fields ``JobMatcher.evaluate`` adds on top of a ``match`` entry.
+EVALUATION_ONLY_KEYS = {"failed_requirements"}
 # Chunks retrieved per query before grouping by candidate (about 4-5 per resume).
 CHUNK_POOL = 50
 # Candidate semantic score = blend of the best chunk and the mean of the top 3,
@@ -242,9 +244,10 @@ class JobMatcher:
     ) -> dict[str, dict]:
         """Nearest chunks grouped by resume, optionally restricted to ``resume_paths``.
 
-        Chunk similarity is ``1 - cosine distance``; a candidate's
-        ``semantic_score`` is ``BEST_CHUNK_WEIGHT * best + (1 -
-        BEST_CHUNK_WEIGHT) * mean(top 3)``.
+        Unrestricted, the ``CHUNK_POOL`` nearest chunks are taken; restricted,
+        every chunk of those resumes is scored. Chunk similarity is ``1 -
+        cosine distance``; a candidate's ``semantic_score`` is
+        ``BEST_CHUNK_WEIGHT * best + (1 - BEST_CHUNK_WEIGHT) * mean(top 3)``.
         """
         total_chunks = self.rag.collection.count()
         if total_chunks == 0 or resume_paths == []:
@@ -252,7 +255,7 @@ class JobMatcher:
         where = {"resume_path": {"$in": resume_paths}} if resume_paths else None
         result = self.rag.collection.query(
             query_embeddings=[query],
-            n_results=min(CHUNK_POOL, total_chunks),
+            n_results=total_chunks if resume_paths else min(CHUNK_POOL, total_chunks),
             where=where,
             include=["documents", "metadatas", "distances"],
         )
@@ -315,7 +318,7 @@ class JobMatcher:
         paths = list(texts)
         bm25 = BM25Okapi([_resume_tokens(texts[p], skills[p]) for p in paths])
         raw = bm25.get_scores(_query_tokens(parsed))
-        best = max(raw)
+        best = float(max(raw))  # plain floats, not numpy scalars, so results serialise
         if best <= 0:
             return {p: 0.0 for p in paths}
         return {p: round(max(0.0, float(score)) / best, 4) for p, score in zip(paths, raw)}
@@ -323,7 +326,11 @@ class JobMatcher:
     # --- hybrid ---
 
     def hybrid_search(
-        self, job_description: str, k: int | None = TOP_K, parsed: dict | None = None
+        self,
+        job_description: str,
+        k: int | None = TOP_K,
+        parsed: dict | None = None,
+        resume_paths: list[str] | None = None,
     ) -> list[dict]:
         """Top-``k`` candidates (all of the pool if ``k`` is None) by the hybrid of
         semantic, keyword and skill signals.
@@ -331,6 +338,7 @@ class JobMatcher:
         The pool is every candidate in the semantic chunk pool plus the
         ``KEYWORD_POOL`` best keyword matches; keyword-only candidates get
         their semantic score from a query restricted to their own chunks.
+        With ``resume_paths``, the pool is exactly those resumes instead.
 
         Each result extends the ``semantic_search`` fields with
         ``semantic_norm`` (the semantic score calibrated to 0..1),
@@ -341,12 +349,14 @@ class JobMatcher:
         """
         parsed = parsed or parse_job_description(job_description)
         query = self._embed_query(job_description)
-        candidates = self._semantic_candidates(query)
-
         keyword = self.keyword_scores(parsed)
-        by_keyword = sorted((p for p in keyword if keyword[p] > 0), key=keyword.get, reverse=True)
-        keyword_only = [p for p in by_keyword[:KEYWORD_POOL] if p not in candidates]
-        candidates.update(self._semantic_candidates(query, keyword_only))
+        if resume_paths is not None:
+            candidates = self._semantic_candidates(query, list(resume_paths))
+        else:
+            candidates = self._semantic_candidates(query)
+            by_keyword = sorted((p for p in keyword if keyword[p] > 0), key=keyword.get, reverse=True)
+            keyword_only = [p for p in by_keyword[:KEYWORD_POOL] if p not in candidates]
+            candidates.update(self._semantic_candidates(query, keyword_only))
 
         jd_skills = parsed["required_skills"] + parsed["preferred_skills"]
         for candidate in candidates.values():
@@ -419,22 +429,17 @@ class JobMatcher:
         same document as ``match``.
         """
         matches, filtered = [], []
-        for candidate in self.hybrid_search(parsed["text"], k=None, parsed=parsed):
-            checks = check_must_haves(candidate["metadata"], parsed["must_haves"])
-            score = round(100 * candidate["hybrid_score"])
-            failed = [c["detail"] for c in checks if c["status"] == "not_met"]
-            if failed:
+        for result in self.evaluate(parsed):
+            if result["failed_requirements"]:
                 filtered.append(
-                    {
-                        "candidate_name": candidate["candidate_name"],
-                        "resume_path": resume_rag.display_path(candidate["resume_path"]),
-                        "match_score": score,
-                        "failed_requirements": failed,
-                    }
+                    {key: result[key] for key in
+                     ("candidate_name", "resume_path", "match_score", "failed_requirements")}
                 )
-                continue
-            if len(matches) < k:
-                matches.append(self._format_match(candidate, score, checks, details))
+            elif len(matches) < k:
+                matches.append(
+                    {key: value for key, value in result.items()
+                     if key not in EVALUATION_ONLY_KEYS and (details or key != "details")}
+                )
 
         output = {"job_description": parsed["text"], "top_matches": matches}
         if details:
@@ -446,6 +451,23 @@ class JobMatcher:
         if include_filtered or details:
             output["filtered_out"] = filtered
         return output
+
+    def evaluate(self, parsed: dict, resume_paths: list[str] | None = None) -> list[dict]:
+        """Score and check every candidate in the pool (or exactly ``resume_paths``).
+
+        Unlike ``match_parsed`` nothing is filtered out: each result is a
+        ``match`` entry with ``details``, plus ``"failed_requirements"`` (empty
+        when the candidate passes every must-have). Best score first.
+        """
+        results = []
+        for candidate in self.hybrid_search(
+            parsed["text"], k=None, parsed=parsed, resume_paths=resume_paths
+        ):
+            checks = check_must_haves(candidate["metadata"], parsed["must_haves"])
+            result = self._format_match(candidate, round(100 * candidate["hybrid_score"]), checks, True)
+            result["failed_requirements"] = [c["detail"] for c in checks if c["status"] == "not_met"]
+            results.append(result)
+        return results
 
     def _format_match(self, candidate: dict, score: int, checks: list[dict], details: bool) -> dict:
         match = {
