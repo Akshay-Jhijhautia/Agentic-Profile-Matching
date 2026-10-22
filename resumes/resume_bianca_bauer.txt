@@ -1,0 +1,25 @@
+Bianca Bauer
+bianca.bauer@example.com | (555) 023-6321 | Boston, MA
+
+SUMMARY
+Senior Data Engineer with 10 years of experience building event ingestion pipelines with Python and PostgreSQL.
+
+TECHNICAL SKILLS
+Python, SQL, ETL, Spark, Airflow, PostgreSQL, Terraform, AWS, Hadoop, Git, Docker, Scala
+
+WORK EXPERIENCE
+Senior Data Engineer, Summit Learning (Jul 2025 to Present)
+- Delivered a new event ingestion pipeline using ETL and Docker, resulting in a 59% reduction in pipeline run time.
+- Rebuilt the streaming platform on SQL, delivering a 53% increase in data freshness.
+- Owned the finance reporting mart end to end with Airflow, Git and Terraform.
+- Led a team of 6 engineers delivering the finance reporting mart.
+Data Engineer, Umbra Security (Apr 2023 to Jun 2025)
+- Delivered a new finance reporting mart using SQL and Git, resulting in a 25% increase in data freshness.
+Junior Data Engineer, Juniper Travel (Apr 2016 to Feb 2023)
+- Rebuilt the event ingestion pipeline on Spark, delivering a 59% reduction in pipeline run time.
+
+ACADEMIC BACKGROUND
+Full-Stack Web Development Bootcamp, App Academy, 2016
+
+CERTIFICATIONS
+AWS Certified Solutions Architect (2019)

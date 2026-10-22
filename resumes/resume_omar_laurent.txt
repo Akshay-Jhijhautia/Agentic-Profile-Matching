@@ -1,0 +1,20 @@
+Omar Laurent
+omar.laurent@example.com | (555) 061-6659 | Seattle, WA
+
+PROFESSIONAL SUMMARY
+Senior Java Engineer with 7+ years of experience, specialising in Spring, SQL and Java.
+
+SKILLS
+Java, SQL, Spring, Oracle, Jenkins, AWS, Docker, Kotlin, Microservices, REST APIs
+
+EMPLOYMENT HISTORY
+Senior Java Engineer, Acme Payments (2019 to Present)
+- Owned the trading gateway end to end with Java, Jenkins and Docker.
+- Delivered a new inventory platform using Java and Docker, resulting in a 36% reduction in incident count.
+- Led a team of 7 engineers delivering the trading gateway.
+
+ACADEMIC BACKGROUND
+B.Sc. Computer Science, Purdue University, 2018
+
+CERTIFICATIONS
+AWS Certified Solutions Architect (2019)

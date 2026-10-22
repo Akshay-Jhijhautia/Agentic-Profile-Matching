@@ -1,0 +1,19 @@
+Ethan Khan
+ethan.khan@example.com | (555) 080-6652 | Seattle, WA
+
+SUMMARY
+Senior Full Stack Engineer who has spent 7 years shipping booking platforms; strongest in React and AWS.
+
+TECHNICAL SKILLS
+JavaScript, Node.js, React, GraphQL, MongoDB, Redux, REST APIs, Docker, Redis, AWS, CI/CD
+
+PROFESSIONAL EXPERIENCE
+Senior Full Stack Engineer, Redwood Mobility (Apr 2021 - Present)
+- Rebuilt the booking platform on React, delivering a 24% increase in release frequency.
+- Delivered a new booking platform using GraphQL and Redis, resulting in a 33% increase in release frequency.
+- Led a team of 9 engineers delivering the public REST API.
+Full Stack Engineer, Willow Biotech (Oct 2019 - Mar 2021)
+- Owned the real-time chat feature end to end with MongoDB, Redux and Redis.
+
+EDUCATION
+B.S. Computer Science, University of Melbourne, 2019

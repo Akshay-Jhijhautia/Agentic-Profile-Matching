@@ -1,0 +1,23 @@
+Mateo Costa
+mateo.costa@example.com | (555) 084-9717 | Chicago, IL
+
+SUMMARY
+Senior Data Scientist who has spent 8 years shipping customer segmentation models; strongest in Tableau and Git.
+
+TECHNICAL SKILLS
+Python, SQL, Statistics, pandas, scikit-learn, TensorFlow, Tableau, A/B Testing, Git, Machine Learning, Databricks, Spark, NumPy, Snowflake
+
+EXPERIENCE
+Senior Data Scientist, Driftwood Media (Jul 2022 – Present)
+- Introduced NumPy on the demand forecast team, contributing to a 52% increase in retention.
+- Rebuilt the churn model on SQL, delivering a 36% reduction in false-positive rate.
+- Delivered a new churn model using Python and Databricks, resulting in a 32% reduction in false-positive rate.
+- Mentored 9 engineers and set scikit-learn standards across the team.
+Data Scientist, Juniper Travel (Jun 2019 – Jun 2022)
+- Delivered a new demand forecast using pandas and Machine Learning, resulting in a 13% reduction in false-positive rate.
+Junior Data Scientist, Contoso Retail (Apr 2018 – Jan 2019)
+- Delivered a new churn model using pandas and Databricks, resulting in a 55% reduction in false-positive rate.
+- Introduced Git on the customer segmentation model team, contributing to a 26% reduction in false-positive rate.
+
+ACADEMIC BACKGROUND
+B.Tech Computer Science, Imperial College London, 2018

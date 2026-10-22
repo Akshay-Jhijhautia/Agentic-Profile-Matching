@@ -1,21 +1,28 @@
 """Generate fictional sample resumes in PDF, DOCX and TXT formats.
 
-The first four resumes are the Milestone 1 samples; the rest add variety in
-roles, seniority, section headers ("Work Experience", "Technical Skills", ...)
+The first four resumes are the Milestone 1 samples; the next eight add variety
+in roles, seniority, section headers ("Work Experience", "Technical Skills", ...)
 and date formats ("2019 - Present", "Mar 2019 – Jun 2022") so the RAG
-pipeline has realistic material to chunk, parse and rank.
+pipeline has realistic material to chunk, parse and rank. Seeded synthetic
+resumes (``synthetic_resumes``) fill the dataset up to ``--count`` so the
+agent has a realistic pool to screen.
 
 Run from the project root:
-    python scripts/generate_sample_resumes.py [output_dir]
+    python -m scripts.generate_sample_resumes [output_dir] [--count 100] [--seed 2026]
 """
 
 from __future__ import annotations
 
-import sys
+import argparse
 from pathlib import Path
 
 from docx import Document
 from fpdf import FPDF
+
+from scripts import synthetic_resumes
+
+DEFAULT_COUNT = 100
+DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "resumes"
 
 # PDF output uses the core Helvetica font (latin-1 only), so PDF resumes must
 # stick to plain ASCII hyphens; DOCX/TXT resumes may use en dashes.
@@ -352,17 +359,40 @@ def _write_txt(path: Path, data: dict) -> None:
 WRITERS = {"pdf": _write_pdf, "docx": _write_docx, "txt": _write_txt}
 
 
-def generate(output_dir: Path) -> list[Path]:
+def build_dataset(count: int = DEFAULT_COUNT, seed: int = synthetic_resumes.SEED) -> dict[str, dict]:
+    """The hand-written resumes plus seeded synthetic ones, ``count`` in total."""
+    if count < len(RESUMES):
+        raise ValueError(f"count must be at least {len(RESUMES)} (the hand-written resumes)")
+    synthetic = synthetic_resumes.build_resumes(
+        count - len(RESUMES), seed=seed, exclude_names={data["name"] for data in RESUMES.values()}
+    )
+    return {**RESUMES, **synthetic}
+
+
+def generate(
+    output_dir: Path, count: int = DEFAULT_COUNT, seed: int = synthetic_resumes.SEED
+) -> list[Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     written = []
-    for stem, data in RESUMES.items():
+    for stem, data in build_dataset(count, seed).items():
         path = output_dir / f"{stem}.{data['format']}"
         WRITERS[data["format"]](path, data)
         written.append(path)
     return written
 
 
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Generate the sample resume dataset.")
+    parser.add_argument("output_dir", nargs="?", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument("--count", type=int, default=DEFAULT_COUNT, help=f"Total resumes (default: {DEFAULT_COUNT}).")
+    parser.add_argument("--seed", type=int, default=synthetic_resumes.SEED, help="Seed for synthetic resumes.")
+    args = parser.parse_args(argv)
+    try:
+        written = generate(args.output_dir, args.count, args.seed)
+    except ValueError as exc:
+        parser.error(str(exc))
+    print(f"Wrote {len(written)} resumes to {args.output_dir}")
+
+
 if __name__ == "__main__":
-    target = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent.parent / "resumes"
-    for p in generate(target):
-        print(f"wrote {p}")
+    main()

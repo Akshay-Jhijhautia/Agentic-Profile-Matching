@@ -1,0 +1,24 @@
+Emeka Fischer
+emeka.fischer@example.com | (555) 097-3231 | Chicago, IL
+
+PROFESSIONAL SUMMARY
+Junior Machine Learning Engineer with 1+ years of experience, specialising in Python, Computer Vision and Machine Learning.
+
+SKILLS
+Python, Machine Learning, PyTorch, Computer Vision, Spark, AWS
+
+EMPLOYMENT HISTORY
+Junior Machine Learning Engineer, Helios Energy (Jan 2025 - Present)
+- Introduced AWS on the document classifier team, contributing to a 52% increase in model accuracy.
+- Owned the semantic search service end to end with Computer Vision, Spark and AWS.
+- Delivered a new recommendation model using PyTorch and Spark, resulting in a 54% reduction in training time.
+
+PROJECTS
+Image tagging pipeline (personal project) - built with Python and AWS; open source on GitHub.
+Hackathon winner: prototype semantic search service using PyTorch in 48 hours.
+
+ACADEMIC BACKGROUND
+Full-Stack Web Development Bootcamp, General Assembly, 2025
+
+CERTIFICATIONS
+AWS Certified Solutions Architect (2023)

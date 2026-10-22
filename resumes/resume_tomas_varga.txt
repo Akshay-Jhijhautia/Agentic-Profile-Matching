@@ -1,0 +1,17 @@
+Tomas Varga
+tomas.varga@example.com | (555) 077-3001 | Bangalore, India
+
+PROFILE
+Full Stack Engineer with 3 years of experience building real-time chat features with Express and Node.js.
+
+TECHNICAL SKILLS
+JavaScript, Node.js, React, Express, MongoDB, Redis, Tailwind CSS, Git, TypeScript, Next.js, Redux
+
+PROFESSIONAL EXPERIENCE
+Full Stack Engineer, Keystone Telecom (01/2023 – Present)
+- Delivered a new admin console using MongoDB and Git, resulting in a 32% increase in release frequency.
+- Owned the admin console end to end with Express, Tailwind CSS and Next.js.
+- Introduced Tailwind CSS on the real-time chat feature team, contributing to a 42% increase in release frequency.
+
+EDUCATION
+B.Sc. Information Systems, University of Waterloo, 2023

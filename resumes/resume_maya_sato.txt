@@ -1,0 +1,22 @@
+Maya Sato
+maya.sato@example.com | (555) 060-9357 | Toronto, ON
+
+PROFESSIONAL SUMMARY
+DevOps Engineer who has spent 3 years shipping infrastructure-as-code modules; strongest in Kubernetes and Python.
+
+SKILLS
+Linux, Docker, Kubernetes, AWS, Terraform, CI/CD, Jenkins, Python, Helm, Bash, GitLab
+
+EXPERIENCE
+DevOps Engineer, Redwood Mobility (Mar 2025 – Present)
+- Rebuilt the infrastructure-as-code module on AWS, delivering a 45% reduction in cloud spend.
+- Delivered a new Kubernetes platform using Kubernetes and Bash, resulting in a 29% increase in deployment frequency.
+Junior DevOps Engineer, Zephyr Cloud (Mar 2023 – Jan 2025)
+- Rebuilt the observability stack on AWS, delivering a 52% reduction in deployment time.
+- Delivered a new multi-region failover setup using Linux and Helm, resulting in a 30% reduction in deployment time.
+
+EDUCATION
+Full-Stack Web Development Bootcamp, Le Wagon, 2022
+
+CERTIFICATIONS
+Certified Kubernetes Administrator (CKA) (2025)

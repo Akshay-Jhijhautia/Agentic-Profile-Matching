@@ -1,0 +1,19 @@
+Lucia Novak
+lucia.novak@example.com | (555) 059-6399 | Singapore
+
+PROFILE
+Data Engineer who has spent 5 years shipping event ingestion pipelines; strongest in Spark and AWS.
+
+CORE COMPETENCIES
+Python, SQL, ETL, Spark, dbt, AWS Glue, Scala, AWS, GCP, Docker
+
+WORK EXPERIENCE
+Data Engineer, Tidal Streaming (2022 to Present)
+- Rebuilt the streaming platform on SQL, delivering a 20% reduction in pipeline run time.
+- Delivered a new customer data warehouse using ETL and AWS, resulting in a 54% increase in data freshness.
+- Owned the streaming platform end to end with dbt, GCP and AWS.
+Junior Data Engineer, Umbra Security (2021 to 2022)
+- Rebuilt the customer data warehouse on AWS Glue, delivering a 40% reduction in failed job rate.
+
+ACADEMIC BACKGROUND
+B.Tech Information Systems, University of Washington, 2021

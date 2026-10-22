@@ -1,0 +1,17 @@
+Uma Ivanova
+uma.ivanova@example.com | (555) 085-3245 | Bangalore, India
+
+SUMMARY
+Junior Data Engineer with 2 years of experience building customer data warehouses with Python and dbt.
+
+CORE COMPETENCIES
+Python, SQL, ETL, Spark, dbt, AWS Glue, Kafka, Docker, Scala, GCP
+
+EXPERIENCE
+Junior Data Engineer, Tidal Streaming (2024 - Present)
+- Introduced GCP on the event ingestion pipeline team, contributing to a 33% reduction in pipeline run time.
+- Rebuilt the streaming platform on ETL, delivering a 27% increase in data freshness.
+- Delivered a new customer data warehouse using dbt and GCP, resulting in a 38% increase in data freshness.
+
+EDUCATION
+B.Tech Information Systems, Purdue University, 2024

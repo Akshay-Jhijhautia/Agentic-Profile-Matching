@@ -1,0 +1,19 @@
+Kavya Evans
+kavya.evans@example.com | (555) 087-4712 | Chicago, IL
+
+PROFESSIONAL SUMMARY
+Backend Engineer with 5+ years of experience, specialising in Django, Python and PostgreSQL.
+
+SKILLS
+Python, SQL, Django, PostgreSQL, Celery, Django REST Framework, Docker, Microservices
+
+WORK EXPERIENCE
+Backend Engineer, Northwind Traders (Aug 2025 – Present)
+- Delivered a new partner integration layer using PostgreSQL and Docker, resulting in a 54% reduction in cloud spend.
+- Introduced Microservices on the reporting backend team, contributing to a 34% reduction in error rate.
+Junior iOS Developer, Fabrikam Logistics (Oct 2021 – May 2025)
+- Delivered a new reporting backend using Swift and iOS, resulting in a 58% reduction in error rate.
+- Rebuilt the order management service on Swift, delivering a 58% reduction in cloud spend.
+
+ACADEMIC BACKGROUND
+Bachelor of Science in Software Engineering, University of Michigan, 2021

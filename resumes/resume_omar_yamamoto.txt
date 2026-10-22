@@ -1,0 +1,21 @@
+Omar Yamamoto
+omar.yamamoto@example.com | (555) 021-9128 | London, UK
+
+PROFILE
+Senior Frontend Engineer with 7+ years of experience, specialising in TypeScript, HTML and JavaScript.
+
+CORE COMPETENCIES
+JavaScript, HTML, CSS, Angular, TypeScript, Storybook, Tailwind CSS, Git, Next.js, Cypress, Redux, GraphQL
+
+PROFESSIONAL EXPERIENCE
+Senior Frontend Engineer, Tidal Streaming (Mar 2023 - Present)
+- Owned the marketing site end to end with Angular, Storybook and GraphQL.
+- Delivered a new checkout flow using JavaScript and Next.js, resulting in a 60% reduction in bundle size.
+- Rebuilt the customer portal on HTML, delivering a 19% increase in conversion rate.
+- Led a team of 8 engineers delivering the analytics dashboard.
+Frontend Engineer, Willow Biotech (Jun 2019 - Oct 2022)
+- Delivered a new marketing site using JavaScript and Git, resulting in a 13% reduction in page load time.
+- Introduced Storybook on the checkout flow team, contributing to a 29% increase in conversion rate.
+
+ACADEMIC BACKGROUND
+B.Tech Computer Science, University of Waterloo, 2018

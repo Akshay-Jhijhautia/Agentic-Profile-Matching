@@ -1,0 +1,20 @@
+Javier Mehta
+javier.mehta@example.com | (555) 080-3630 | Toronto, ON
+
+PROFESSIONAL SUMMARY
+Junior Frontend Developer who has spent 2 years shipping customer portals; strongest in Vue.js and Tailwind CSS.
+
+CORE COMPETENCIES
+JavaScript, HTML, CSS, Vue.js, TypeScript, Storybook, Tailwind CSS
+
+EXPERIENCE
+Junior Frontend Developer, Vertex Commerce (2024 - Present)
+- Owned the design system end to end with Vue.js, Tailwind CSS and Storybook.
+- Rebuilt the marketing site on HTML, delivering a 38% increase in conversion rate.
+
+PERSONAL PROJECTS
+Marketing site (personal project) - built with CSS and Storybook; open source on GitHub.
+Hackathon winner: prototype design system using HTML in 48 hours.
+
+ACADEMIC BACKGROUND
+B.S. Information Technology, University of Waterloo, 2023

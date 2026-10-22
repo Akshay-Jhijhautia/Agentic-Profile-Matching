@@ -1,0 +1,19 @@
+Rafael Bauer
+rafael.bauer@example.com | (555) 027-6160 | Seattle, WA
+
+PROFILE
+Full Stack Engineer who has spent 3 years shipping admin consoles; strongest in React and Redis.
+
+SKILLS
+JavaScript, Node.js, React, Express, MongoDB, AWS, Next.js, Redis, Tailwind CSS, REST APIs, TypeScript
+
+PROFESSIONAL EXPERIENCE
+Full Stack Engineer, Contoso Retail (2025 – Present)
+- Rebuilt the real-time chat feature on MongoDB, delivering a 15% reduction in infrastructure cost.
+- Delivered a new public REST API using Express and Redis, resulting in a 17% reduction in infrastructure cost.
+Junior Data Engineer, Globex Insurance (2023 – 2025)
+- Introduced ETL on the SaaS billing app team, contributing to a 32% reduction in infrastructure cost.
+- Rebuilt the booking platform on Python, delivering a 18% reduction in response time.
+
+EDUCATION
+B.S. Software Engineering, Imperial College London, 2023

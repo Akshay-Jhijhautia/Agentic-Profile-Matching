@@ -1,0 +1,19 @@
+Ben Kowalski
+ben.kowalski@example.com | (555) 097-3183 | Seattle, WA
+
+SUMMARY
+Java Developer with 3+ years of experience, specialising in Spring Boot, MySQL and SQL.
+
+TECHNICAL SKILLS
+Java, SQL, Spring Boot, MySQL, Kotlin, Microservices, Kubernetes, JUnit, Docker, Jenkins
+
+WORK EXPERIENCE
+Java Developer, Meridian Foods (2025 – Present)
+- Delivered a new inventory platform using Spring Boot and Jenkins, resulting in a 57% reduction in p99 latency.
+- Rebuilt the event-driven ledger on MySQL, delivering a 34% reduction in incident count.
+Junior Java Developer, Globex Insurance (2023 – 2025)
+- Delivered a new core banking service using SQL and Kubernetes, resulting in a 42% increase in throughput.
+- Rebuilt the core banking service on Java, delivering a 25% increase in throughput.
+
+ACADEMIC BACKGROUND
+B.S. Computer Science, University of Melbourne, 2022
