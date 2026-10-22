@@ -92,11 +92,11 @@ def test_index_directory_stores_chunks_with_metadata(rag, resume_dir):
     assert stats["chunks"] == summary["chunks"] == rag.collection.count()
     assert stats["embedder"] == "hashing:512"
 
-    stored = rag.collection.get(include=["documents", "metadatas"])
-    assert len(set(stored["ids"])) == len(stored["ids"])
-    sections = {m["section"] for m in stored["metadatas"]}
+    stored = rag.collection.chunks()
+    assert len({chunk.id for chunk in stored}) == len(stored)
+    sections = {chunk.metadata["section"] for chunk in stored}
     assert {"Summary", "Skills", "Experience", "Education"} <= sections
-    assert all(doc.startswith("Candidate: ") for doc in stored["documents"])
+    assert all(chunk.document.startswith("Candidate: ") for chunk in stored)
 
 
 def test_metadata_round_trip(rag, resume_dir):
@@ -133,7 +133,7 @@ def test_changed_resume_is_replaced(rag, resume_dir):
 
     summary = rag.index_directory(str(resume_dir))
     assert summary["indexed"] == [str(path)]
-    docs = rag.collection.get(where={"resume_path": str(path)}, include=["documents"])["documents"]
+    docs = [chunk.document for chunk in rag.collection.chunks(str(path))]
     assert any("RabbitMQ" in d for d in docs)
     assert not any("Kafka" in d for d in docs)
 
@@ -194,5 +194,5 @@ def test_embedder_mismatch_requires_reset(rag, resume_dir, db_dir):
 def test_stored_vectors_support_similarity_query(rag, resume_dir):
     rag.index_directory(str(resume_dir))
     (query,) = rag.embedder.embed(["Java Spring Boot Kafka developer"])
-    result = rag.collection.query(query_embeddings=[query], n_results=1, include=["metadatas"])
-    assert result["metadatas"][0][0]["candidate_name"] == "Alex Lee"
+    (hit,) = rag.collection.query(query, n_results=1)
+    assert hit.chunk.metadata["candidate_name"] == "Alex Lee"

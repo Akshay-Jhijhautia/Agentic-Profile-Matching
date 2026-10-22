@@ -17,7 +17,7 @@ def test_settings_from_env(clean_env):
     clean_env.setenv("OPENAI_TEMPERATURE", "0.3")
     clean_env.setenv("OPENAI_TIMEOUT", "5")
     clean_env.setenv("OPENAI_MAX_RETRIES", "0")
-    clean_env.setenv("CHROMA_DB_DIR", "/tmp/db")
+    clean_env.setenv("INDEX_DIR", "/tmp/db")
     clean_env.setenv("REPORTS_DIR", "/tmp/reports")
     clean_env.setenv("SHORTLIST_SIZE", "5")
     clean_env.setenv("SCREENING_ROUNDS", "2")
@@ -47,7 +47,9 @@ def test_data_home_holds_index_uploads_and_sessions(clean_env, tmp_path):
     assert (settings.db_dir, settings.uploads_dir, settings.sessions_db) == (
         str(tmp_path / "pm" / "index"), str(tmp_path / "pm" / "uploads"), str(tmp_path / "pm" / "sessions.sqlite"),
     )
-    clean_env.setenv("CHROMA_DB_DIR", "/elsewhere/index")  # individual settings still win
+    clean_env.setenv("CHROMA_DB_DIR", "/legacy/index")  # the old name still works
+    assert Settings.from_env().db_dir == "/legacy/index"
+    clean_env.setenv("INDEX_DIR", "/elsewhere/index")  # individual settings still win
     assert Settings.from_env().db_dir == "/elsewhere/index"
 
 

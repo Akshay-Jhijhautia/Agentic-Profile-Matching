@@ -9,7 +9,7 @@ from tests.paths import RESUMES_DIR
 
 @pytest.fixture(scope="session")
 def hashing_db(tmp_path_factory) -> str:
-    """A ChromaDB index of the fixture resumes built with the offline hashing embedder."""
+    """An index of the fixture resumes built with the offline hashing embedder."""
     path = str(tmp_path_factory.mktemp("hashing_db"))
     resume_rag.ResumeRAG(path, embedder=resume_rag.HashingEmbedder()).index_directory(str(RESUMES_DIR))
     return path
@@ -41,7 +41,7 @@ def services(fixture_pool_db, tmp_path) -> Services:
 
 
 # Settings read from the environment; cleared so a developer's .env cannot leak into tests.
-ENV_VARS = ("OPENAI_MODEL", "OPENAI_TEMPERATURE", "OPENAI_TIMEOUT", "OPENAI_MAX_RETRIES", "CHROMA_DB_DIR",
+ENV_VARS = ("OPENAI_MODEL", "OPENAI_TEMPERATURE", "OPENAI_TIMEOUT", "OPENAI_MAX_RETRIES", "CHROMA_DB_DIR", "INDEX_DIR",
             "REPORTS_DIR", "SHORTLIST_SIZE", "SCREENING_ROUNDS", "SAVE_REPORTS", "OPENAI_RESPONSES_API",
             "UPLOADS_DIR", "EMBEDDER", "PROFILE_MATCH_HOME", "SESSIONS_DB", "LLM_PROVIDER", "LLM_MODEL",
             "LLM_TEMPERATURE", "LLM_TIMEOUT", "LLM_MAX_RETRIES", "LLM_BASE_URL", "LLM_API_KEY")

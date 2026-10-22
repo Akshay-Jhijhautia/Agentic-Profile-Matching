@@ -18,7 +18,7 @@ ROLE = Requirements.model_validate({
 @pytest.fixture
 def offline_env(tmp_path, monkeypatch):
     """Settings from the environment: a temporary index built with the hashing embedder."""
-    monkeypatch.setenv("CHROMA_DB_DIR", str(tmp_path / "db"))
+    monkeypatch.setenv("INDEX_DIR", str(tmp_path / "db"))
     monkeypatch.setenv("EMBEDDER", "hashing")
     config.get_settings.cache_clear()
     yield tmp_path

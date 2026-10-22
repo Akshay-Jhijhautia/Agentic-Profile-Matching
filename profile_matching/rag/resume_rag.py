@@ -4,8 +4,9 @@ Resumes are read with the file system tools in ``fs_tools``, split
 into their natural sections (Summary, Skills, Experience, Education, ...) and
 chunked so that a chunk never mixes two sections and, where possible, never
 splits a single job entry. Each chunk is embedded and stored in a local
-ChromaDB collection together with the resume's metadata (name, skills,
-experience years, education), so the job matcher can filter and rank on it.
+vector store (``vector_store``: SQLite and NumPy) together with the resume's
+metadata (name, skills, experience years, education), so the job matcher can
+filter and rank on it.
 """
 
 from __future__ import annotations
@@ -22,19 +23,17 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
-import chromadb
 import openai
-from chromadb.config import Settings
-from chromadb.errors import NotFoundError
 
 from . import fs_tools, skills_vocab
+from .vector_store import Chunk, Collection, VectorStore
 
 logger = logging.getLogger(__name__)
 
 LLM_MAX_INPUT_CHARS = 12000
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 EMBED_BATCH_SIZE = 100
-DEFAULT_DB_DIR = "chroma_db"
+DEFAULT_DB_DIR = "index"
 COLLECTION_NAME = "resumes"
 # Part of every resume's content hash: bump it when chunking or metadata
 # extraction changes so the next `index` run refreshes every resume.
@@ -737,10 +736,10 @@ def _content_hash(content: str) -> str:
 
 
 def _chunk_record(chunk: dict, meta: dict, file_name: str, content_hash: str, file_stamp: str = "") -> dict:
-    """Chroma metadata for one chunk: chunk fields plus the resume's metadata.
+    """The stored record of one chunk: chunk fields plus the resume's metadata.
 
-    Chroma accepts scalars and lists but not dicts or ``None``, so
-    ``skill_years`` is stored as JSON and empty values are left out.
+    ``skill_years`` is stored as a JSON string and empty values are left out,
+    which keeps records flat and small.
     """
     record = {
         "candidate_name": chunk["candidate_name"],
@@ -779,7 +778,7 @@ def parse_record(record: dict) -> dict:
 
 
 class ResumeRAG:
-    """Indexes resumes into a persistent ChromaDB collection (cosine similarity).
+    """Indexes resumes into a persistent vector store collection (cosine similarity).
 
     The collection records which embedder built it; opening it with a
     different one raises ``EmbedderMismatchError`` (use ``reset=True`` to
@@ -800,27 +799,17 @@ class ResumeRAG:
         self.metadata_llm = metadata_llm
         self._embedder = embedder
         self._collection_metadata = collection_metadata or {}
-        self._client = chromadb.PersistentClient(
-            path=persist_dir, settings=Settings(anonymized_telemetry=False)
-        )
+        self._store = VectorStore(persist_dir)
         if reset:
-            try:
-                self._client.delete_collection(collection_name)
-            except NotFoundError:
-                pass
+            self._store.delete_collection(collection_name)
         self.collection = self._open_collection(collection_name)
 
-    def _open_collection(self, name: str):
-        try:
-            collection = self._client.get_collection(name, embedding_function=None)
-        except NotFoundError:
+    def _open_collection(self, name: str) -> Collection:
+        collection = self._store.get_collection(name)
+        if collection is None:
             embedder_name = self._embedder.name if self._embedder else default_embedder_name()
-            return self._client.create_collection(
-                name,
-                metadata={"hnsw:space": "cosine", "embedder": embedder_name, **self._collection_metadata},
-                embedding_function=None,
-            )
-        stored = (collection.metadata or {}).get("embedder")
+            return self._store.create_collection(name, {"embedder": embedder_name, **self._collection_metadata})
+        stored = collection.metadata.get("embedder")
         if self._embedder and stored and stored != self._embedder.name:
             raise EmbedderMismatchError(
                 f"Index at '{self.persist_dir}' was built with '{stored}', not "
@@ -830,7 +819,7 @@ class ResumeRAG:
 
     @property
     def embedder_name(self) -> str:
-        return (self.collection.metadata or {}).get("embedder", default_embedder_name())
+        return self.collection.metadata.get("embedder", default_embedder_name())
 
     @property
     def embedder(self) -> Embedder:
@@ -902,40 +891,36 @@ class ResumeRAG:
 
         self.remove_resume(path)
         self.collection.add(
-            ids=[f"{c['id']}@{path_key}" for c in chunks],
-            embeddings=vectors,
-            documents=[c["document"] for c in chunks],
-            metadatas=[_chunk_record(c, meta, file_name, content_hash, resume.get("stamp", "")) for c in chunks],
+            [
+                Chunk(f"{c['id']}@{path_key}", c["document"],
+                      _chunk_record(c, meta, file_name, content_hash, resume.get("stamp", "")))
+                for c in chunks
+            ],
+            vectors,
         )
         return len(chunks)
 
     def remove_resume(self, resume_path: str) -> None:
-        self.collection.delete(where={"resume_path": resume_path})
+        self.collection.delete(resume_path)
 
     def _stored_record(self, resume_path: str) -> dict | None:
         """One stored chunk record of ``resume_path`` (they share the resume-level fields)."""
-        found = self.collection.get(where={"resume_path": resume_path}, limit=1, include=["metadatas"])
-        return found["metadatas"][0] if found["ids"] else None
+        found = self.collection.chunks(resume_path, limit=1)
+        return found[0].metadata if found else None
 
     def _set_stamp(self, resume_path: str, stamp: str) -> None:
-        found = self.collection.get(where={"resume_path": resume_path}, include=["metadatas"])
-        self.collection.update(
-            ids=found["ids"], metadatas=[record | {"file_stamp": stamp} for record in found["metadatas"]]
-        )
+        self.collection.update_metadata(resume_path, {"file_stamp": stamp})
 
     # --- reading ---
 
     def _all_records(self) -> list[dict]:
-        return self.collection.get(include=["metadatas"])["metadatas"]
+        return [chunk.metadata for chunk in self.collection.chunks()]
 
     def all_chunks(self) -> list[dict]:
         """Every stored chunk as ``{"id", "document", "metadata"}`` (for keyword search)."""
-        stored = self.collection.get(include=["documents", "metadatas"])
         return [
-            {"id": chunk_id, "document": document, "metadata": record}
-            for chunk_id, document, record in zip(
-                stored["ids"], stored["documents"], stored["metadatas"]
-            )
+            {"id": chunk.id, "document": chunk.document, "metadata": chunk.metadata}
+            for chunk in self.collection.chunks()
         ]
 
     def indexed_paths(self) -> set[str]:

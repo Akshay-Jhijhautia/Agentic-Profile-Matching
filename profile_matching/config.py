@@ -8,7 +8,8 @@ current directory and from the data home, in that order of precedence.
 The chat model comes from ``LLM_PROVIDER`` and ``LLM_MODEL`` (see
 ``providers``). The older ``OPENAI_MODEL``, ``OPENAI_TEMPERATURE``,
 ``OPENAI_TIMEOUT`` and ``OPENAI_MAX_RETRIES`` still configure the OpenAI
-provider when the ``LLM_`` names are unset.
+provider when the ``LLM_`` names are unset, and ``CHROMA_DB_DIR`` still sets
+the index folder (now ``INDEX_DIR``).
 """
 
 from __future__ import annotations
@@ -89,7 +90,7 @@ class Settings:
             llm_base_url=_env("LLM_BASE_URL"),
             llm_responses_api=_flag("OPENAI_RESPONSES_API", defaults.llm_responses_api),
             home=str(home),
-            db_dir=os.getenv("CHROMA_DB_DIR") or str(home / "index"),
+            db_dir=_env("INDEX_DIR", "CHROMA_DB_DIR") or str(home / "index"),
             uploads_dir=os.getenv("UPLOADS_DIR") or str(home / "uploads"),
             sessions_db=os.getenv("SESSIONS_DB") or str(home / "sessions.sqlite"),
             embedder=os.getenv("EMBEDDER") or defaults.embedder,

@@ -4,7 +4,7 @@ A LangGraph agent that screens resumes against a job description, explains every
 ranking it makes, and refines the search through conversation. It is built on a
 retrieval engine (`profile_matching/rag/`):
 - file tools that read PDF, DOCX and text resumes;
-- a ChromaDB index of resumes chunked by section, with extracted skills, experience and education;
+- a local index of resumes chunked by section (SQLite, exact search with NumPy), with extracted skills, experience and education;
 - a hybrid semantic + keyword matcher with must-have checks.
 
 ```
@@ -76,7 +76,7 @@ From a source checkout, `python main.py ...` runs the same commands.
 | `profile-match index FOLDER [--embedder openai\|hashing]` | Index or refresh a folder without screening |
 | `profile-match list FOLDER` | The candidates indexed from a folder |
 | `profile-match sessions [--delete ID]` | Saved chat sessions, newest first: id, date, role, resumes |
-| `profile-match clean [--older-than DAYS] [--yes]` | Old upload batches and sessions (default 30 days), and indexes of deleted folders; lists them, deletes with `--yes` |
+| `profile-match clean [--older-than DAYS] [--yes]` | Old upload batches and sessions (default 30 days), indexes of deleted folders, and a ChromaDB index left by versions before 1.1; lists them, deletes with `--yes` |
 | `profile-match --version` | The installed version |
 
 ### Local data
@@ -86,7 +86,7 @@ Everything the tool keeps lives in one folder, `~/.profile-match`
 
 | Path | Contents |
 | --- | --- |
-| `index/` | One ChromaDB index per resume folder or upload batch |
+| `index/index.sqlite` | The index: one collection per resume folder or upload batch |
 | `uploads/` | Copies of resumes given as files, one batch per chat or file set |
 | `sessions.sqlite` | Saved chat sessions (LangGraph checkpoints) |
 | `.env` | Optional settings, e.g. `OPENAI_API_KEY` |
@@ -438,7 +438,7 @@ other providers are covered by offline tests.
 | `OPENAI_RESPONSES_API` | `true` (`false` with `LLM_BASE_URL`) | OpenAI's Responses API, required for tool calling with reasoning models |
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Resume and query embeddings |
 | `PROFILE_MATCH_HOME` | `~/.profile-match` | Local data: indexes, uploads, sessions, `.env` |
-| `CHROMA_DB_DIR` / `UPLOADS_DIR` / `SESSIONS_DB` | under `PROFILE_MATCH_HOME` | Override one location |
+| `INDEX_DIR` / `UPLOADS_DIR` / `SESSIONS_DB` | under `PROFILE_MATCH_HOME` | Override one location (`CHROMA_DB_DIR` still works for `INDEX_DIR`) |
 | `EMBEDDER` | `openai` | Embeddings for new folder indexes: `openai`, or `hashing` (offline, keyword overlap only) |
 | `REPORTS_DIR` | `reports` | Where reports are saved; the only directory the agent may write to |
 | `SHORTLIST_SIZE` | `10` | Candidates kept after round 1 |
@@ -479,8 +479,8 @@ and `list`. The agent itself needs a chat model.
 | `profile_matching/schemas.py` | Pydantic models shared across the agent |
 | `profile_matching/prompts.py` | All prompt templates |
 | `profile_matching/services.py`, `candidates.py`, `config.py`, `markdown.py` | Shared dependencies, candidate lookup, settings, Markdown helpers |
-| `profile_matching/rag/` | Retrieval engine: `fs_tools` (read, list, search files), `resume_rag` (section chunking, metadata extraction, ChromaDB index), `job_matcher` (JD parsing, hybrid search, must-have checks), `skills_vocab` (skill aliases) |
-| `scripts/` | Sample resume generator, stability check (development tools, not part of the product) |
+| `profile_matching/rag/` | Retrieval engine: `fs_tools` (read, list, search files), `resume_rag` (section chunking, metadata extraction, indexing), `vector_store` (SQLite records, exact cosine search with NumPy), `job_matcher` (JD parsing, hybrid search, must-have checks), `skills_vocab` (skill aliases) |
+| `scripts/` | Sample resume generator, stability check, ranking evaluation (development tools, not part of the product) |
 | `tests/` | Offline pytest suite; `tests/fixtures/` holds 12 sample resumes and 3 sample JDs |
 
 ## Sample data
@@ -511,10 +511,11 @@ sample session in this README use the default 100.
 pytest -q
 ```
 
-The suite (over 400 tests) runs offline. A fake chat model answers structured
-calls and scripts tool-calling turns, and ChromaDB runs on a temporary index
-built with a hashing embedder. It covers:
+The suite (over 480 tests) runs offline. A fake chat model answers structured
+calls and scripts tool-calling turns, and the index is a temporary one built
+with a hashing embedder. It covers:
 - the retrieval engine (file reading, chunking, metadata extraction, indexing, hybrid search);
+- the vector store (exact nearest neighbours against brute force, persistence, concurrent use);
 - requirement extraction and the knockout policy;
 - every guardrail;
 - the three rounds;
@@ -522,6 +523,20 @@ built with a hashing embedder. It covers:
 - reports;
 - the tools;
 - full multi-turn conversations through the real graph, including interrupts, refinements and error recovery.
+
+Ranking quality is measured separately, on the 100 sample resumes, whose role
+families give relevance labels. Requirements are fixed (no LLM), so only the
+retrieval stack varies:
+
+```bash
+python -m scripts.ranking_eval run --embedder openai:text-embedding-3-small --out a.json --cache emb.json
+python -m scripts.ranking_eval compare a.json b.json
+```
+
+It reports P@10, nDCG@10 and AUC (how often a relevant candidate outscores an
+irrelevant one) for 16 queries, and compares two runs candidate by candidate.
+Replacing ChromaDB with the current store changed nothing: identical
+knockouts, rankings and scores for all 100 candidates in every query.
 
 ## Design decisions
 
@@ -534,6 +549,10 @@ built with a hashing embedder. It covers:
 - **Round 1 covers the whole index.** Screening scores every resume rather than
   a retrieval pool, so no qualifying candidate is missed. LLM cost is spent
   only on the shortlist.
+- **Exact search, no vector database.** A pool holds hundreds or a few thousand
+  resumes, so comparing the query with every chunk takes milliseconds. Exact
+  search never misses a neighbour the way approximate indexes can, and SQLite
+  plus NumPy keeps the install small (168 MB instead of 527 MB with ChromaDB).
 - **One record per candidate.** `CandidateMatch` builds up through the rounds,
   so ranking, change explanations, reports and the assistant all read the same
   numbers.
@@ -562,6 +581,3 @@ built with a hashing embedder. It covers:
   images aren't read; they are reported so they can be converted. Subfolders of a resume folder aren't
   read either.
 - **Uploads accumulate** until `profile-match clean` removes them.
-- **Install size.** ChromaDB brings large dependencies (a Kubernetes client,
-  ONNX Runtime, gRPC): the base install is about 500 MB. A lighter local vector
-  store would cut most of it.

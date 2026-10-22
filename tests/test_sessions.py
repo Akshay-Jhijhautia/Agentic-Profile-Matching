@@ -167,6 +167,34 @@ def test_clean_finds_old_uploads_orphaned_indexes_and_old_sessions(home, tmp_pat
     assert maintenance.find_stale(settings, older_than_days=30) == []
 
 
+def test_clean_removes_a_chromadb_index_left_by_an_older_version(home, tmp_path, monkeypatch):
+    settings = dataclasses.replace(home.settings, uploads_dir=str(tmp_path / "uploads"), embedder="hashing",
+                                   db_dir=str(tmp_path / "db"))
+    monkeypatch.setattr(sessions, "last_updated", lambda _: {})
+    folder = _resume_folder(tmp_path)
+    ResumePool.open(folder, settings).sync()
+    legacy_db = tmp_path / "db" / maintenance.LEGACY_CHROMA_FILE
+    legacy_db.write_bytes(b"x" * 2_000_000)
+    legacy_collection = tmp_path / "db" / "0b7e0d6e-3c41-4ad0-9d3b-0a4b8f6f5a11"
+    legacy_collection.mkdir()
+    (legacy_collection / "data_level0.bin").write_bytes(b"x")
+    (tmp_path / "db" / "notes").mkdir()  # not a ChromaDB folder: left alone
+
+    (stale,) = maintenance.find_stale(settings, older_than_days=30)
+    assert (stale.kind, stale.name) == ("index", "ChromaDB index (before 1.1)") and "2.0 MB" in stale.detail
+    maintenance.remove(settings, [stale])
+    assert not legacy_db.exists() and not legacy_collection.exists() and (tmp_path / "db" / "notes").exists()
+    assert ResumePool.open(folder, settings).size == 1  # the current index is untouched
+    assert maintenance.find_stale(settings, older_than_days=30) == []
+
+
+def _resume_folder(tmp_path):
+    folder = tmp_path / "cvs"
+    folder.mkdir()
+    shutil.copy(RESUMES_DIR / "resume_john_doe.pdf", folder)
+    return folder
+
+
 # --- command line and configuration -------------------------------------------------------------------------
 
 

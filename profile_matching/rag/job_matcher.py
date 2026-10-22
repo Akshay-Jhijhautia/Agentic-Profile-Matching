@@ -235,25 +235,20 @@ class JobMatcher:
         """Nearest chunks grouped by resume, optionally restricted to ``resume_paths``.
 
         Unrestricted, the ``CHUNK_POOL`` nearest chunks are taken; restricted,
-        every chunk of those resumes is scored. Chunk similarity is ``1 -
-        cosine distance``; a candidate's ``semantic_score`` is
+        every chunk of those resumes is scored. Chunk similarity is the cosine
+        similarity; a candidate's ``semantic_score`` is
         ``BEST_CHUNK_WEIGHT * best + (1 - BEST_CHUNK_WEIGHT) * mean(top 3)``.
         """
         total_chunks = self.rag.collection.count()
         if total_chunks == 0 or resume_paths == []:
             return {}
-        where = {"resume_path": {"$in": resume_paths}} if resume_paths else None
-        result = self.rag.collection.query(
-            query_embeddings=[query],
-            n_results=total_chunks if resume_paths else min(CHUNK_POOL, total_chunks),
-            where=where,
-            include=["documents", "metadatas", "distances"],
+        hits = self.rag.collection.query(
+            query, n_results=total_chunks if resume_paths else CHUNK_POOL, resume_paths=resume_paths or None
         )
 
         candidates: dict[str, dict] = {}
-        for chunk_id, document, record, distance in zip(
-            result["ids"][0], result["documents"][0], result["metadatas"][0], result["distances"][0]
-        ):
+        for hit in hits:
+            chunk_id, document, record = hit.chunk.id, hit.chunk.document, hit.chunk.metadata
             path = record["resume_path"]
             if path not in candidates:
                 candidates[path] = {
@@ -267,7 +262,7 @@ class JobMatcher:
                     "id": chunk_id,
                     "section": record["section"],
                     "text": _excerpt(document),
-                    "similarity": round(1.0 - distance, 4),
+                    "similarity": round(hit.similarity, 4),
                 }
             )
 

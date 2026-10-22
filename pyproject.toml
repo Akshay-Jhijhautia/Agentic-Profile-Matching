@@ -18,9 +18,9 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    # Retrieval engine: file reading, ChromaDB index, hybrid search
+    # Retrieval engine: file reading, vector index (SQLite + NumPy), hybrid search
     "openai>=1.40",
-    "chromadb>=1.5",
+    "numpy>=1.26",
     "rank-bm25>=0.2.2",
     "pypdf>=5.0",
     "python-docx>=1.1",

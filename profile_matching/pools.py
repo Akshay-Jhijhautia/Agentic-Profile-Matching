@@ -1,6 +1,6 @@
 """Resume pools: one per folder.
 
-Each folder of resumes gets its own ChromaDB collection, so applicants for
+Each folder of resumes gets its own index collection, so applicants for
 different jobs never mix and screening only ever ranks the active folder.
 Syncing a pool is incremental: new and changed files are indexed, unchanged
 ones skipped, deleted ones removed, and every file that could not be used is
