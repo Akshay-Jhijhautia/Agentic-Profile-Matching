@@ -17,6 +17,8 @@ from pathlib import Path
 from .rag import fs_tools, resume_rag
 
 _SEPARATORS_RE = re.compile(r"[\s_\-]+")
+# Resume text sent to the LLM, enough for any realistic resume.
+MAX_RESUME_CHARS = 6_000
 
 
 class CandidateNotFoundError(LookupError):
@@ -94,13 +96,21 @@ class CandidateDirectory:
         hint = f" Did you mean: {', '.join(close)}?" if close else ""
         raise CandidateNotFoundError(f"No candidate matches '{ref}'.{hint}")
 
+    def find(self, ref: str) -> CandidateProfile | None:
+        """``resolve``, but None instead of an error (for ids written by the LLM)."""
+        try:
+            return self.resolve(ref)
+        except CandidateNotFoundError:
+            return None
+
     def resolve_many(self, refs: list[str]) -> list[CandidateProfile]:
         """Resolve each reference, dropping repeats but keeping the given order."""
         return list({p.id: p for p in map(self.resolve, refs)}.values())
 
     @staticmethod
-    def resume_text(profile: CandidateProfile) -> str:
+    def resume_text(profile: CandidateProfile, max_chars: int | None = MAX_RESUME_CHARS) -> str:
+        """The resume's text, cut to ``max_chars`` (None for all of it)."""
         result = fs_tools.read_file(profile.resume_path)
         if not result["success"]:
             raise FileNotFoundError(f"Could not read {profile.name}'s resume: {result['error']}")
-        return result["content"]
+        return result["content"][:max_chars]

@@ -141,6 +141,16 @@ class ChatSession:
         passing = sum(m.passes_must_haves for m in candidates)
         self._note(f"Screened {len(candidates)} resumes; {passing} pass every must-have.")
 
+    def _on_assess_candidate(self, change: dict) -> None:
+        for key, assessment in change["assessments"].items():
+            self._note(f"Deep analysis of {key.split(':', 1)[1]}: {assessment.deep_score}")
+
+    def _on_finalize_ranking(self, change: dict) -> None:
+        decided = [m for m in change["shortlist"] if m.recommendation is not None]
+        if decided:
+            hires = sum(m.recommendation.decision == "hire" for m in decided)
+            self._note(f"Final round: {hires} hire, {len(decided) - hires} no hire.")
+
     def _on_generate_report(self, change: dict) -> None:
         self.report = change["report"]
         self.show_report()

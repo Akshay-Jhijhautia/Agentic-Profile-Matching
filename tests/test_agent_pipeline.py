@@ -9,7 +9,7 @@ from profile_matching import reports, screening
 from profile_matching.agent.state import make_checkpointer
 from profile_matching.rag import resume_rag
 from profile_matching.schemas import CandidateMatch, Requirements
-from tests.fakes import FakeChatModel
+from tests.fakes import SCREENING_RESPONSES, FakeChatModel
 from tests.paths import JD_DIR
 
 
@@ -25,12 +25,14 @@ RUST_ROLE = _role(role_title="Rust Engineer", must_have=[{"skill": "Rust", "min_
 
 @pytest.fixture
 def run(services):
-    """Run the pipeline once with a fake LLM answering ``requirements``."""
+    """Run the pipeline once with a fake LLM answering ``requirements``.
+
+    Round 1 only unless ``screening_rounds`` is given (the deep rounds have their own tests).
+    """
 
     def _run(requirements: Requirements, jd: str = "Python backend engineer", **settings):
-        services.model = FakeChatModel({Requirements: requirements})
-        if settings:
-            services.settings = dataclasses.replace(services.settings, **settings)
+        services.model = FakeChatModel({Requirements: requirements, **SCREENING_RESPONSES})
+        services.settings = dataclasses.replace(services.settings, **{"screening_rounds": 1} | settings)
         return matching_agent.screen(services, jd)
 
     return _run
@@ -42,10 +44,16 @@ def run(services):
 def test_graph_is_the_pipeline(services):
     graph = matching_agent.build_graph(services).get_graph()
     edges = {(e.source, e.target) for e in graph.edges}
-    path = ("__start__", *matching_agent.PIPELINE, "__end__")
-    # explain_changes can sit between ranking and the report, but only runs after a refinement.
-    detour = {("rank_candidates", "explain_changes"), ("explain_changes", "generate_report")}
-    assert edges == set(zip(path, path[1:])) | detour
+    path = ("__start__", *matching_agent.PIPELINE)
+    assert edges == set(zip(path, path[1:])) | {
+        # round 2 fans out per candidate, or is skipped when nothing needs assessing
+        ("rank_candidates", "assess_candidate"), ("rank_candidates", "finalize_ranking"),
+        ("assess_candidate", "finalize_ranking"),
+        # explain_changes sits between ranking and the report, but only runs after a refinement
+        ("finalize_ranking", "explain_changes"), ("explain_changes", "generate_report"),
+        ("finalize_ranking", "generate_report"),
+        ("generate_report", "__end__"),
+    }
 
 
 def test_pipeline_screens_every_resume_and_shortlists_passing_ones(run):
@@ -100,7 +108,7 @@ def test_empty_job_description_is_rejected(run):
 
 
 def test_state_round_trips_through_the_checkpointer_without_warnings(services):
-    services.model = FakeChatModel({Requirements: PYTHON_ROLE})
+    services.model = FakeChatModel({Requirements: PYTHON_ROLE, **SCREENING_RESPONSES})
     graph = matching_agent.build_graph(services, checkpointer=make_checkpointer())
     config = {"configurable": {"thread_id": "t1"}}
     with warnings.catch_warnings():
@@ -151,7 +159,7 @@ def test_check_ready_needs_a_key_for_the_real_model(services, monkeypatch):
 
 
 def test_cli_prints_and_saves_the_report(services, monkeypatch, tmp_path, capsys):
-    services.model = FakeChatModel({Requirements: PYTHON_ROLE})
+    services.model = FakeChatModel({Requirements: PYTHON_ROLE, **SCREENING_RESPONSES})
     monkeypatch.setattr(matching_agent.Services, "from_settings", lambda: services)
     out = tmp_path / "report.md"
     assert matching_agent.main(["Python backend engineer", "--out", str(out)]) == 0

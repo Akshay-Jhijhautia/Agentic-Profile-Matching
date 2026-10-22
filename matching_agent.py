@@ -2,8 +2,9 @@
 
 One-shot (``conversational=False``):
 
-    START → parse_jd → extract_requirements → search_resumes
-          → rank_candidates → generate_report → END
+    START → parse_jd → extract_requirements → search_resumes (round 1: all resumes)
+          → rank_candidates (top N) → assess_candidate ×N in parallel (round 2)
+          → finalize_ranking (re-rank + round 3 hire/no-hire) → generate_report → END
 
 Conversational (``conversational=True``), with a human feedback loop:
 
@@ -11,7 +12,8 @@ Conversational (``conversational=True``), with a human feedback loop:
                           ├─ refine → refine_requirements ─────────────────┴→ search_resumes
                           ├─ ask → assistant ⇄ tools → human_feedback
                           └─ end → END
-    search_resumes → rank_candidates → [explain_changes, after a refine] → generate_report
+    search_resumes → rank_candidates → assess_candidate ×N → finalize_ranking
+                   → [explain_changes, after a refine] → generate_report
     generate_report → human_feedback (waits for the user) → route_intent
 
 Usage:
@@ -41,7 +43,9 @@ from profile_matching.rag import fs_tools, resume_rag
 from profile_matching.services import Services
 from profile_matching.tools import make_tools
 
-PIPELINE = ("parse_jd", "extract_requirements", "search_resumes", "rank_candidates", "generate_report")
+# Linear steps up to the round-1 shortlist; then round 2 fans out, round 3 finalises.
+PIPELINE = ("parse_jd", "extract_requirements", "search_resumes", "rank_candidates")
+ASSESS, FINALIZE, REPORT = "assess_candidate", "finalize_ranking", "generate_report"
 # Runs between ranking and the report, only when the turn refined the requirements.
 EXPLAIN = "explain_changes"
 
@@ -58,17 +62,18 @@ def build_graph(
     """
     pipeline = PipelineNodes(services)
     builder = StateGraph(AgentState)
-    for name in (*PIPELINE, EXPLAIN):
+    for name in (*PIPELINE, ASSESS, FINALIZE, EXPLAIN, REPORT):
         builder.add_node(name, getattr(pipeline, name))
-    *search, report = PIPELINE
-    for current, following in pairwise(search):
+    for current, following in pairwise(PIPELINE):
         builder.add_edge(current, following)
-    builder.add_conditional_edges(search[-1], after_ranking, [EXPLAIN, report])
-    builder.add_edge(EXPLAIN, report)
+    builder.add_conditional_edges(PIPELINE[-1], pipeline.fan_out_assessments, [ASSESS, FINALIZE])
+    builder.add_edge(ASSESS, FINALIZE)
+    builder.add_conditional_edges(FINALIZE, after_ranking, [EXPLAIN, REPORT])
+    builder.add_edge(EXPLAIN, REPORT)
 
     if not conversational:
         builder.add_edge(START, PIPELINE[0])
-        builder.add_edge(PIPELINE[-1], END)
+        builder.add_edge(REPORT, END)
         return builder.compile(checkpointer=checkpointer)
 
     tools = make_tools(services)
@@ -82,7 +87,7 @@ def build_graph(
     builder.add_edge(START, "route_intent")
     builder.add_conditional_edges("route_intent", next_step, ROUTES)
     builder.add_edge("refine_requirements", "search_resumes")
-    builder.add_edge(PIPELINE[-1], "human_feedback")
+    builder.add_edge(REPORT, "human_feedback")
     builder.add_conditional_edges("assistant", tools_condition, {"tools": "tools", END: "human_feedback"})
     builder.add_edge("tools", "assistant")
     builder.add_edge("human_feedback", "route_intent")

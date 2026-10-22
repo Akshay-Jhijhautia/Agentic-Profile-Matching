@@ -46,5 +46,5 @@ def next_step(state: AgentState) -> str:
 
 
 def after_ranking(state: AgentState) -> str:
-    """Conditional edge after ``rank_candidates``: explain changes only after a refinement."""
+    """Conditional edge after ``finalize_ranking``: explain changes only after a refinement."""
     return "explain_changes" if refined(state) else "generate_report"

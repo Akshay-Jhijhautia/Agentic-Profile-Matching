@@ -12,11 +12,10 @@ from __future__ import annotations
 import json
 
 from . import llm, prompts, screening
-from .candidates import CandidateNotFoundError, CandidateProfile
+from .candidates import CandidateProfile
 from .schemas import ComparisonVerdict, InterviewQuestions, Requirements
 from .services import Services
 
-MAX_RESUME_CHARS = 6_000
 COMPARE_LIMITS = (2, 5)
 QUESTION_LIMITS = (3, 10)
 
@@ -61,16 +60,10 @@ def _llm_payload(requirements: Requirements | None, **sections) -> str:
     return json.dumps(body, ensure_ascii=False)
 
 
-def _resume_excerpt(services: Services, profile: CandidateProfile) -> str:
-    return services.candidates.resume_text(profile)[:MAX_RESUME_CHARS]
-
-
 def _to_id(services: Services, ref: str) -> str | None:
     """The id the LLM meant (it sometimes answers with a name), or None if unknown."""
-    try:
-        return services.candidates.resolve(ref).id
-    except CandidateNotFoundError:
-        return None
+    profile = services.candidates.find(ref)
+    return profile.id if profile else None
 
 
 def compare_candidates(
@@ -83,7 +76,7 @@ def compare_candidates(
     by_id = {p.id: p for p in profiles}
     payload = _llm_payload(
         requirements,
-        candidates=[fact | {"resume_text": _resume_excerpt(services, by_id[fact["id"]])} for fact in facts],
+        candidates=[fact | {"resume_text": services.candidates.resume_text(by_id[fact["id"]])} for fact in facts],
     )
     verdict = llm.structured(ComparisonVerdict, prompts.COMPARE_CANDIDATES, payload, model=services.model)
 
@@ -126,7 +119,7 @@ def generate_interview_questions(
     focus = focus_areas(fact, requirements)
     payload = _llm_payload(
         requirements,
-        candidate=fact, focus_areas=focus, resume_text=_resume_excerpt(services, profile),
+        candidate=fact, focus_areas=focus, resume_text=services.candidates.resume_text(profile),
         question_count=count,
     )
     result = llm.structured(InterviewQuestions, prompts.INTERVIEW_QUESTIONS, payload, model=services.model)

@@ -158,3 +158,10 @@ def test_conversation_context_includes_the_latest_refinement():
     assert "Latest refinement: Total experience: none → 4+ years" in context
     assert "- Ann: ▼ left (now #5), now fails no Go on resume (needs Go)" in context
     assert "Latest refinement" not in reports.conversation_context(_role(), new, new[:1])
+
+
+def test_a_move_against_the_own_score_also_names_the_others():
+    old = [_match("ann", 1, 90), _match("bob", 2, 85)]
+    new = [_match("bob", 1, 80), _match("ann", 9, 90, failed=["no Go on resume (needs Go)"])]
+    (bob,) = changes.ranking_diff(_role(), _role(), old, new, old, new[:1]).of_kind("up")
+    assert bob.reasons == ["score 85 → 80", "1 candidate(s) ranked above now fail a must-have"]

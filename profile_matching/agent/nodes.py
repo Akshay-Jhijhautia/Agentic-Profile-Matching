@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, trim_messages
 from langchain_core.tools import BaseTool
-from langgraph.types import interrupt
+from langgraph.types import Send, interrupt
 
 from .. import changes, llm, prompts, reports, screening
 from ..requirements import extract_requirements, load_job_description
@@ -52,12 +52,41 @@ class PipelineNodes:
         }
 
     def rank_candidates(self, state: AgentState) -> dict:
-        """Keep the best candidates who pass every must-have."""
+        """Round 1 cut: keep the best candidates who pass every must-have."""
         size = self.services.settings.shortlist_size
         return {
             "previous_shortlist": state.get("shortlist", []),
             "shortlist": screening.shortlist(state["candidates"], size),
         }
+
+    def fan_out_assessments(self, state: AgentState) -> list[Send] | str:
+        """Conditional edge: one parallel ``assess_candidate`` per shortlisted candidate
+        without a cached assessment, or straight on when there is nothing to assess."""
+        if self.services.settings.screening_rounds < 2:
+            return "finalize_ranking"
+        requirements, cached = state["requirements"], state.get("assessments", {})
+        tasks = [
+            Send("assess_candidate", {"requirements": requirements, "match": match})
+            for match in state["shortlist"]
+            if screening.assessment_key(requirements, match.id) not in cached
+        ]
+        return tasks or "finalize_ranking"
+
+    def assess_candidate(self, task: dict) -> dict:
+        """Round 2 for one candidate (runs in parallel with the others)."""
+        requirements, match = task["requirements"], task["match"]
+        assessment = screening.assess(self.services, requirements, match)
+        return {"assessments": {screening.assessment_key(requirements, match.id): assessment}}
+
+    def finalize_ranking(self, state: AgentState) -> dict:
+        """Re-rank the shortlist by final score (round 2), then decide hire or no-hire (round 3)."""
+        rounds, requirements = self.services.settings.screening_rounds, state["requirements"]
+        shortlist = state["shortlist"]
+        if rounds >= 2:
+            shortlist = screening.apply_assessments(shortlist, requirements, state.get("assessments", {}))
+        if rounds >= 3:
+            shortlist = screening.decide(self.services, requirements, shortlist)
+        return {"shortlist": shortlist}
 
     def explain_changes(self, state: AgentState) -> dict:
         """After a refinement: what changed in the requirements and the ranking, and why."""

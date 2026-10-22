@@ -191,8 +191,66 @@ class ScoreBreakdown(BaseModel):
     skill_coverage: float | None
 
 
+# --- rounds 2 and 3 (LLM output) --------------------------------------------------------------------
+
+
+class RequirementEvidence(BaseModel):
+    requirement: str = Field(description="The requirement as given, e.g. 'React (3+ yrs)' or 'GraphQL'.")
+    verdict: Literal["strong", "partial", "missing"]
+    evidence: str = Field(description="What the resume shows, quoted or paraphrased; empty when missing.")
+
+
+class Assessment(BaseModel):
+    """Round 2: a deep review of one full resume against the role."""
+
+    requirement_evidence: list[RequirementEvidence] = Field(description="One entry per requirement.")
+    strengths: list[str]
+    gaps: list[str]
+    risk_flags: list[str] = Field(
+        description="Concerns such as short tenures, career gaps or claims without evidence."
+    )
+    deep_score: int = Field(description="0-100: 85+ exceptional, 70-84 solid, 55-69 borderline, <55 weak.")
+    summary: str = Field(description="Two sentences on overall fit.")
+
+    @field_validator("deep_score")
+    @classmethod
+    def _clamp(cls, value: int) -> int:
+        return max(0, min(100, value))
+
+
+Decision = Literal["hire", "no_hire"]
+Confidence = Literal["high", "medium", "low"]
+
+
+class HiringDecision(BaseModel):
+    candidate_id: str = Field(description="The candidate's id exactly as given in the input.")
+    decision: Decision = Field(description="hire: advance to final interviews; no_hire: stop here.")
+    confidence: Confidence
+    rationale: str = Field(description="One or two sentences citing the decisive evidence.")
+
+
+class HiringDecisions(BaseModel):
+    """Round 3: the committee's call on every shortlisted candidate."""
+
+    decisions: list[HiringDecision]
+
+
+class Recommendation(BaseModel):
+    decision: Decision
+    confidence: Confidence
+    rationale: str
+
+
+# Final score = DEEP_WEIGHT × deep score + (1 − DEEP_WEIGHT) × retrieval score. The deep
+# review reads the whole resume, so it outweighs retrieval once it exists.
+DEEP_WEIGHT = 0.6
+# Final scores in [low, high) are borderline: worth a second look before rejecting.
+BORDERLINE_BAND = (60, 75)
+
+
 class CandidateMatch(BaseModel):
-    """One candidate scored and checked against the current requirements."""
+    """One candidate across the screening rounds: retrieval score and must-have checks
+    (round 1), then the deep assessment (round 2) and the recommendation (round 3)."""
 
     id: str
     name: str
@@ -208,11 +266,26 @@ class CandidateMatch(BaseModel):
     highest_degree: str | None
     reasoning: str
     excerpts: list[str]
+    assessment: Assessment | None = None  # round 2
+    recommendation: Recommendation | None = None  # round 3
 
     @computed_field
     @property
     def passes_must_haves(self) -> bool:
         return not self.failed_requirements
+
+    @computed_field
+    @property
+    def final_score(self) -> int:
+        """The retrieval score, blended with the deep score once round 2 has run."""
+        if self.assessment is None:
+            return self.match_score
+        return round(DEEP_WEIGHT * self.assessment.deep_score + (1 - DEEP_WEIGHT) * self.match_score)
+
+    @property
+    def borderline(self) -> bool:
+        low, high = BORDERLINE_BAND
+        return self.assessment is not None and low <= self.final_score < high
 
     @property
     def unverified(self) -> list[str]:

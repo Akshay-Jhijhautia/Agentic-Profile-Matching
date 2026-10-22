@@ -28,6 +28,8 @@ class Settings:
     reports_dir: str = "reports"
     # Candidates kept after the initial screen.
     shortlist_size: int = 10
+    # 1: retrieval only; 2: + deep analysis of the shortlist; 3: + hire/no-hire decisions.
+    screening_rounds: int = 3
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -40,7 +42,14 @@ class Settings:
             db_dir=os.getenv("CHROMA_DB_DIR") or defaults.db_dir,
             reports_dir=os.getenv("REPORTS_DIR") or defaults.reports_dir,
             shortlist_size=int(os.getenv("SHORTLIST_SIZE") or defaults.shortlist_size),
+            screening_rounds=int(os.getenv("SCREENING_ROUNDS") or defaults.screening_rounds),
         )
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.screening_rounds <= 3:
+            raise ValueError(f"screening_rounds must be 1, 2 or 3, got {self.screening_rounds}")
+        if self.shortlist_size < 1:
+            raise ValueError(f"shortlist_size must be at least 1, got {self.shortlist_size}")
 
 
 @lru_cache(maxsize=1)

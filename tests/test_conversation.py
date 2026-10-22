@@ -18,7 +18,7 @@ from profile_matching.schemas import (
     IntentDecision,
     Requirements,
 )
-from tests.fakes import FakeChatModel
+from tests.fakes import SCREENING_RESPONSES, FakeChatModel
 
 ROLE = Requirements.model_validate({
     "role_title": "Python Backend Engineer", "must_have": [{"skill": "Python", "min_years": None}],
@@ -49,7 +49,7 @@ def tool_call(name: str, args: dict, call_id: str = "call_1") -> AIMessage:
 def chat(services):
     """A chat session over the hashing index; set ``services.model.replies`` per test."""
     services.model = FakeChatModel(
-        {Requirements: ROLE, IntentDecision: route_by_keyword, ComparisonVerdict: VERDICT}
+        {Requirements: ROLE, IntentDecision: route_by_keyword, ComparisonVerdict: VERDICT, **SCREENING_RESPONSES}
     )
     graph = matching_agent.build_graph(services, conversational=True)
     return cli.ChatSession(graph, Console(file=io.StringIO(), width=120))

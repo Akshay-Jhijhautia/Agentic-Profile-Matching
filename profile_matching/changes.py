@@ -11,9 +11,9 @@ who were knocked out above or overtook them. The LLM only narrates this diff.
 from __future__ import annotations
 
 from .rag import job_matcher
-from .schemas import CandidateMatch, ChangeKind, RankChange, RankingDiff, Requirements
+from .schemas import DEEP_WEIGHT, CandidateMatch, ChangeKind, RankChange, RankingDiff, Requirements
 
-# Weights of the hybrid score, so component changes are compared by their effect on it.
+# Weights of the retrieval score, so component changes are compared by their effect on it.
 COMPONENT_WEIGHTS = {
     "semantic": job_matcher.SEMANTIC_WEIGHT,
     "keyword": job_matcher.KEYWORD_WEIGHT,
@@ -24,8 +24,8 @@ COMPONENT_LABELS = {
     "keyword": "keyword match",
     "skill_coverage": "must-have skill coverage",
 }
-# Smallest weighted change (on the 0..1 hybrid scale) worth naming as a reason.
-MIN_COMPONENT_EFFECT = 0.005
+# Smallest effect on the 0-100 final score worth naming as a reason.
+MIN_COMPONENT_EFFECT = 0.5
 
 
 def _years(value: float | None, unit: str = "yrs") -> str:
@@ -63,17 +63,32 @@ def requirement_changes(old: Requirements, new: Requirements) -> list[str]:
     return changes
 
 
+def _deep(match: CandidateMatch) -> int | None:
+    return match.assessment.deep_score if match.assessment else None
+
+
+def _contribution(match: CandidateMatch, name: str) -> float:
+    """What one component adds to the 0-100 final score."""
+    if name == "deep":
+        return DEEP_WEIGHT * (_deep(match) or 0)
+    retrieval_share = 1 - DEEP_WEIGHT if match.assessment else 1
+    value = getattr(match.score_breakdown, name) or 0.0
+    return 100 * retrieval_share * COMPONENT_WEIGHTS[name] * value
+
+
 def _component_reason(old: CandidateMatch, new: CandidateMatch) -> str | None:
-    """The score component whose weighted change moved this candidate most."""
-
-    def value(match: CandidateMatch, name: str) -> float:
-        return getattr(match.score_breakdown, name) or 0.0
-
-    effects = {name: weight * (value(new, name) - value(old, name)) for name, weight in COMPONENT_WEIGHTS.items()}
+    """The score component (retrieval signal or deep analysis) that moved this candidate most."""
+    effects = {
+        name: _contribution(new, name) - _contribution(old, name) for name in (*COMPONENT_WEIGHTS, "deep")
+    }
     name = max(effects, key=lambda n: abs(effects[n]))
     if abs(effects[name]) < MIN_COMPONENT_EFFECT:
         return None
-    return f"{COMPONENT_LABELS[name]} {value(old, name):.0%} → {value(new, name):.0%}"
+    if name == "deep":
+        before, after = (_deep(m) for m in (old, new))
+        return f"deep analysis {before if before is not None else '–'} → {after}"
+    before, after = (getattr(m.score_breakdown, name) or 0.0 for m in (old, new))
+    return f"{COMPONENT_LABELS[name]} {before:.0%} → {after:.0%}"
 
 
 def reasons_for(old: CandidateMatch | None, new: CandidateMatch | None) -> list[str]:
@@ -89,9 +104,9 @@ def reasons_for(old: CandidateMatch | None, new: CandidateMatch | None) -> list[
         newly = [r for r in new.failed_requirements if r not in old.failed_requirements]
         if newly:
             reasons.append(f"now fails {'; '.join(newly)}")
-    if old.match_score != new.match_score:
+    if old.final_score != new.final_score:
         component = _component_reason(old, new)
-        score = f"score {old.match_score} → {new.match_score}"
+        score = f"score {old.final_score} → {new.final_score}"
         reasons.append(f"{score} ({component})" if component else score)
     if new.unverified and not old.unverified:
         reasons.append(f"now unverified: {'; '.join(new.unverified)}")
@@ -118,6 +133,12 @@ def _relative_reason(
     return None
 
 
+def _against_own_score(kind: ChangeKind, before: CandidateMatch, after: CandidateMatch) -> bool:
+    """Moved up with a lower score, or down with a higher one: others caused the move."""
+    delta = after.final_score - before.final_score
+    return (kind == "up" and delta < 0) or (kind == "down" and delta > 0)
+
+
 def _kind(old_rank: int | None, new_rank: int) -> ChangeKind:
     if old_rank is None:
         return "new"
@@ -132,9 +153,13 @@ def ranking_diff(
     old_shortlist: list[CandidateMatch],
     new_shortlist: list[CandidateMatch],
 ) -> RankingDiff:
-    """Every candidate in the new shortlist, then everyone who left it, with reasons."""
-    old_by_id = {m.id: m for m in old_candidates}
-    new_by_id = {m.id: m for m in new_candidates}
+    """Every candidate in the new shortlist, then everyone who left it, with reasons.
+
+    Shortlisted candidates are compared by their final records (with rounds 2
+    and 3), everyone else by their round-1 screening.
+    """
+    old_by_id = {m.id: m for m in old_candidates} | {m.id: m for m in old_shortlist}
+    new_by_id = {m.id: m for m in new_candidates} | {m.id: m for m in new_shortlist}
     old_ranks = {m.id: m.rank for m in old_shortlist}
     new_ids = {m.id for m in new_shortlist}
 
@@ -143,13 +168,13 @@ def ranking_diff(
         before = old_by_id.get(match.id)
         kind = _kind(old_ranks.get(match.id), match.rank)
         reasons = reasons_for(before, match)
-        if not reasons and kind in ("up", "down"):
+        if kind in ("up", "down") and (not reasons or _against_own_score(kind, before, match)):
             relative = _relative_reason(kind, match, old_by_id, new_by_id)
-            reasons = [relative] if relative else []
+            reasons += [relative] if relative else []
         changes.append(RankChange(
             id=match.id, name=match.name, kind=kind,
             old_rank=before.rank if before else None, new_rank=match.rank,
-            old_score=before.match_score if before else None, new_score=match.match_score,
+            old_score=before.final_score if before else None, new_score=match.final_score,
             reasons=reasons,
         ))
     for match in old_shortlist:
@@ -162,7 +187,7 @@ def ranking_diff(
         changes.append(RankChange(
             id=match.id, name=match.name, kind="dropped",
             old_rank=match.rank, new_rank=now.rank if now else None,
-            old_score=match.match_score, new_score=now.match_score if now else None,
+            old_score=match.final_score, new_score=now.final_score if now else None,
             reasons=reasons,
         ))
     return RankingDiff(

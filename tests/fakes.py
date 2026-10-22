@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel
+
+from profile_matching.schemas import Assessment, HiringDecision, HiringDecisions, RequirementEvidence
 
 
 class FakeChatModel:
@@ -46,3 +49,28 @@ class FakeChatModel:
             return response if isinstance(response, BaseModel) else response(messages)
 
         return RunnableLambda(respond)
+
+
+# --- canned screening rounds 2 and 3 -------------------------------------------------------------
+
+
+def fake_assessment(deep_score: int = 80) -> Assessment:
+    return Assessment(
+        requirement_evidence=[RequirementEvidence(requirement="Python", verdict="strong", evidence="5 yrs")],
+        strengths=["Shipped production APIs"], gaps=["No GraphQL"], risk_flags=[],
+        deep_score=deep_score, summary="Solid backend engineer.",
+    )
+
+
+def fake_committee(messages: list) -> HiringDecisions:
+    """Hires every candidate with a final score of 75 or more, as the real committee might."""
+    candidates = json.loads(messages[1].content)["candidates"]
+    return HiringDecisions(decisions=[
+        HiringDecision(candidate_id=c["id"], decision="hire" if c["final_score"] >= 75 else "no_hire",
+                       confidence="medium", rationale=f"Final score {c['final_score']}.")
+        for c in candidates
+    ])
+
+
+# Answers for every LLM call the screening rounds make; merge into a FakeChatModel's responses.
+SCREENING_RESPONSES = {Assessment: fake_assessment(), HiringDecisions: fake_committee}

@@ -22,6 +22,9 @@ cp .env.example .env        # then put your OPENAI_API_KEY in .env
 | `OPENAI_TEMPERATURE` | provider default | Chat temperature; only set it for models that accept one |
 | `OPENAI_TIMEOUT` / `OPENAI_MAX_RETRIES` | `60` / `2` | Chat request limits |
 | `CHROMA_DB_DIR` | `chroma_db` | Vector index location |
+| `REPORTS_DIR` | `reports` | The only directory the agent may write to |
+| `SHORTLIST_SIZE` | `10` | Candidates kept after the initial screen |
+| `SCREENING_ROUNDS` | `3` | 1: retrieval only; 2: + deep analysis; 3: + hire/no-hire |
 
 ## Usage
 
@@ -54,7 +57,7 @@ python main.py screen "Find me candidates with React and 3+ years experience" --
 | `matching_agent.py` | The LangGraph agent: graph wiring (`build_graph`) and one-shot CLI |
 | `profile_matching/agent/` | Agent state (`AgentState`, checkpointer), graph nodes and intent routing |
 | `profile_matching/cli.py` | Interactive terminal chat (rich) driving the human feedback loop |
-| `profile_matching/screening.py` | Screening rounds: score every resume, rank, shortlist |
+| `profile_matching/screening.py` | The three screening rounds: initial screen, deep analysis, hire/no-hire |
 | `profile_matching/reports.py` | Markdown shortlist report and chat summary |
 | `profile_matching/changes.py` | Requirement and ranking diffs with a reason for every move |
 | `main.py` | Single CLI entry point |
@@ -95,7 +98,8 @@ like a full job description.
 One-shot screening (`python matching_agent.py --jd-file ...`):
 
 ```
-START → parse_jd → extract_requirements → search_resumes → rank_candidates → generate_report → END
+START → parse_jd → extract_requirements → search_resumes → rank_candidates
+      → assess_candidate ×N (parallel) → finalize_ranking → generate_report → END
 ```
 
 The conversational graph (`python matching_agent.py`) adds the human feedback
@@ -106,7 +110,8 @@ START → route_intent ─┬─ new_search → parse_jd → extract_requirement
                       ├─ refine → refine_requirements ─────────────────┴→ search_resumes
                       ├─ ask → assistant ⇄ tools → human_feedback
                       └─ end → END
-search_resumes → rank_candidates → [explain_changes, after a refine] → generate_report
+search_resumes → rank_candidates → assess_candidate ×N → finalize_ranking
+               → [explain_changes, after a refine] → generate_report
 generate_report → human_feedback (waits for the user) → route_intent
 ```
 
@@ -155,12 +160,16 @@ tool calls are closed, and the chat carries on.
 | `extract_requirements` | Must-have vs nice-to-have (see below); every version is kept in `requirements_history` |
 | `search_resumes` | Round 1: scores and checks **every** indexed resume (not a retrieval pool) |
 | `rank_candidates` | Candidates passing every must-have, best score first; keeps the top `SHORTLIST_SIZE` |
-| `generate_report` | Markdown report (requirements, ranking table, reasoning, closest knocked-out candidates) and a chat summary |
+| `assess_candidate` | Round 2, one per shortlisted candidate in parallel (`Send`): deep review of the full resume |
+| `finalize_ranking` | Re-ranks by final score, then round 3: hire/no-hire for the whole shortlist |
+| `explain_changes` | After a refinement only: what changed and why (see below) |
+| `generate_report` | Markdown report (requirements, ranking table with every round, recommendations, reasoning, closest knocked-out candidates) and a chat summary |
 
 The state (`profile_matching/agent/state.py`) holds the conversation
 (`messages`), the job understanding (`job_description`, `requirements`,
 `requirements_history`) and the results (`candidates` with every resume
-ranked, the `shortlist` with each candidate's reasoning, `previous_shortlist`,
+ranked, the `shortlist` with each candidate's reasoning, assessment and
+recommendation, the previous screening, the `assessments` cache and the
 `report`). `make_checkpointer()` registers the state's Pydantic types with
 LangGraph's serializer, so checkpoints restore without deserialization
 warnings.
@@ -168,6 +177,22 @@ warnings.
 A skill listed without dated experience is `unverified` (kept, flagged), unless
 the candidate's whole career is shorter than the years required, in which case
 it is `not_met`.
+
+### Multi-round screening
+
+| Round | What happens | Cost |
+| --- | --- | --- |
+| 1. Initial screen | Every resume (e.g. 100) gets the hybrid retrieval score and must-have checks; the best `SHORTLIST_SIZE` (10) passing candidates go on | No LLM calls |
+| 2. Deep analysis | An LLM reviews each shortlisted candidate's full resume in parallel: evidence per requirement (strong / partial / missing), strengths, gaps, risk flags and a 0–100 deep score. The shortlist is re-ranked by **final score = 0.6 × deep + 0.4 × retrieval** | One call per candidate, cached |
+| 3. Final decision | One "hiring committee" call over the whole shortlist decides hire / no-hire with confidence and rationale, so decisions are calibrated against each other | One call |
+
+Final scores from 60 to 74 are flagged **borderline**. Round-2 assessments
+are cached in the state by candidate and hard requirements (not their
+wording), so repeating a search does not repeat the deep analysis. Ranking
+changes caused by round 2 are explained like any other ("deep analysis 79 →
+89"). `SCREENING_ROUNDS=1` or `2` stops earlier for faster, cheaper runs.
+A full three-round screen of 100 resumes takes about 35 seconds with
+`gpt-6-luna`, almost all of it the deep reviews.
 
 ## Agent tools
 
