@@ -203,6 +203,18 @@ def test_policy_corrects_llm_knockouts_on_java_jd():
     assert req.min_total_years == 6
 
 
+def test_policy_demotes_concepts_the_parser_cannot_check():
+    """gpt-6-luna names broad concepts as must-haves; no resume lists them as skills."""
+    jd = (JD_DIR / "java_backend.txt").read_text()
+    llm_answer = _requirements(
+        must_have=[{"skill": s, "min_years": None}
+                   for s in ["Java", "Spring Boot", "Kafka", "Relational Databases"]],
+    )
+    req = extract_requirements(jd, model=_fake(llm_answer))
+    assert req.must_have_skills == ["Java", "Spring Boot", "Kafka"]
+    assert "Relational Databases" in req.nice_to_have
+
+
 @pytest.mark.parametrize("text", ["", "   \n"])
 def test_extract_rejects_empty_text(text):
     with pytest.raises(ValueError):

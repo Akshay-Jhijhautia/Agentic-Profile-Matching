@@ -17,9 +17,9 @@ cp .env.example .env        # then put your OPENAI_API_KEY in .env
 | Variable | Default | Used for |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | — | Chat model and embeddings |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Requirement extraction and agent reasoning |
+| `OPENAI_MODEL` | `gpt-6-luna` | Requirement extraction, agent reasoning and the indexer's metadata fallback |
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Resume and query embeddings |
-| `OPENAI_TEMPERATURE` | `0` | Chat temperature (empty = provider default) |
+| `OPENAI_TEMPERATURE` | provider default | Chat temperature; only set it for models that accept one |
 | `OPENAI_TIMEOUT` / `OPENAI_MAX_RETRIES` | `60` / `2` | Chat request limits |
 | `CHROMA_DB_DIR` | `chroma_db` | Vector index location |
 
@@ -63,9 +63,10 @@ the LLM's answer passes through two deterministic steps:
    LLM skipped (as nice-to-have only) and years it found for a must-have the
    LLM left without them.
 2. **Knockout policy.** Skills offered as alternatives ("PyTorch or
-   TensorFlow", "Oracle or PostgreSQL") are demoted to nice-to-have, and a
-   degree is dropped unless a requirement line demands it without "or
-   equivalent", "preferred" and the like.
+   TensorFlow", "Oracle or PostgreSQL") and broad concepts the resume parser
+   cannot check ("Relational Databases", "Model Deployment") are demoted to
+   nice-to-have, and a degree is dropped unless a requirement line demands it
+   without "or equivalent", "preferred" and the like.
 
 Skills are normalised through the shared vocabulary (`react.js` → `React`),
 and durations or degrees listed as skills are discarded. Ranking reuses the

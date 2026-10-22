@@ -38,7 +38,7 @@ from . import fs_tools, skills_vocab
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_LLM_MODEL = "gpt-4o-mini"
+DEFAULT_LLM_MODEL = "gpt-6-luna"
 LLM_MAX_INPUT_CHARS = 12000
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 EMBED_BATCH_SIZE = 100
@@ -552,7 +552,6 @@ def _llm_extract(text: str, fields: list[str], client, model: str) -> dict:
     }
     response = client.chat.completions.create(
         model=model,
-        temperature=0,
         messages=[
             {
                 "role": "system",

@@ -8,10 +8,11 @@ deterministic passes then make the result safe to use as knockout filters:
    never knocks anyone out, and years it found for a must-have the LLM left
    without them.
 2. Knockout policy (``apply_knockout_policy``): a must-have can only reject a
-   candidate when the text truly demands it. Skills offered as alternatives
-   ("PyTorch or TensorFlow") become nice-to-have, and a degree is dropped
-   unless some requirement line asks for it without "or equivalent",
-   "preferred" and the like.
+   candidate when the text truly demands it and the resume parser can check
+   it. Skills offered as alternatives ("PyTorch or TensorFlow") and broad
+   concepts outside the skills vocabulary ("Relational Databases") become
+   nice-to-have, and a degree is dropped unless some requirement line asks
+   for it without "or equivalent", "preferred" and the like.
 """
 
 from __future__ import annotations
@@ -83,7 +84,10 @@ def degree_required(rules: dict) -> bool:
 def apply_knockout_policy(requirements: Requirements, text: str, rules: dict) -> Requirements:
     """Demote must-haves the text does not strictly demand (see module docstring)."""
     alternatives = alternative_skills(text)
-    demoted = [req.skill for req in requirements.must_have if req.skill.lower() in alternatives]
+    demoted = [
+        req.skill for req in requirements.must_have
+        if req.skill.lower() in alternatives or req.skill not in skills_vocab.SKILLS
+    ]
     return Requirements.model_validate(
         requirements.model_dump()
         | {
