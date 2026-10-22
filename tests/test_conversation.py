@@ -284,3 +284,17 @@ def test_refine_without_a_role_starts_a_new_search(services):
     services.model = FakeChatModel({IntentDecision: IntentDecision(intent="refine")})
     update = IntentRouter(services)({"messages": [HumanMessage("Make React a must-have")]})
     assert update == {"intent": "new_search"}
+
+
+def test_candidate_reports_are_shown_verbatim(chat, services):
+    chat.send("Find me a Python backend engineer")
+    top = state(chat)["shortlist"][0]
+    services.model.replies = [
+        tool_call("get_candidate_report", {"candidate_id": top.id}),
+        AIMessage("Strong on Python; probe the unverified years."),
+    ]
+    chat.send("Show me the top candidate's report")
+    text = output(chat)
+    assert "Candidate report" in text and f"{top.name}: Python Backend Engineer" in text
+    assert "How the score adds up" in text
+    assert state(chat)["messages"][-1].text == "Strong on Python; probe the unverified years."

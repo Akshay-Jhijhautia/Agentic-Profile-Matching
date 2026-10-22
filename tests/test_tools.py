@@ -44,12 +44,12 @@ def _payload(fake: FakeChatModel) -> dict:
 def test_registry_exposes_every_tool(tools):
     assert set(tools) == {
         "read_file", "list_files", "write_file", "search_in_file", "rag_search",
-        "extract_requirements", "compare_candidates", "generate_interview_questions",
+        "extract_requirements", "compare_candidates", "generate_interview_questions", "get_candidate_report",
     }
 
 
 def test_injected_state_is_hidden_from_the_model(tools):
-    for name in ("compare_candidates", "generate_interview_questions"):
+    for name in ("compare_candidates", "generate_interview_questions", "get_candidate_report"):
         assert "state" not in tools[name].tool_call_schema.model_json_schema()["properties"]
 
 

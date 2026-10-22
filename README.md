@@ -25,6 +25,7 @@ cp .env.example .env        # then put your OPENAI_API_KEY in .env
 | `REPORTS_DIR` | `reports` | The only directory the agent may write to |
 | `SHORTLIST_SIZE` | `10` | Candidates kept after the initial screen |
 | `SCREENING_ROUNDS` | `3` | 1: retrieval only; 2: + deep analysis; 3: + hire/no-hire |
+| `SAVE_REPORTS` | `true` | Save the summary and per-candidate reports after every screening |
 
 ## Usage
 
@@ -37,7 +38,8 @@ python main.py match --jd-file job_descriptions/frontend_react.txt   # non-agent
 # The matching agent
 python matching_agent.py                       # interactive chat (also: python main.py chat)
 python matching_agent.py --jd-file job_descriptions/frontend_react.txt   # one-shot screening
-python main.py screen "Find me candidates with React and 3+ years experience" --out reports/react.md
+python main.py screen "Find me candidates with React and 3+ years experience"
+# → reports/react-developer-<timestamp>/summary.md + candidates/NN-<id>.md
 ```
 
 ## Project layout
@@ -58,7 +60,9 @@ python main.py screen "Find me candidates with React and 3+ years experience" --
 | `profile_matching/agent/` | Agent state (`AgentState`, checkpointer), graph nodes and intent routing |
 | `profile_matching/cli.py` | Interactive terminal chat (rich) driving the human feedback loop |
 | `profile_matching/screening.py` | The three screening rounds: initial screen, deep analysis, hire/no-hire |
-| `profile_matching/reports.py` | Markdown shortlist report and chat summary |
+| `profile_matching/reports.py` | Shortlist report, "What changed", chat summary and assistant context |
+| `profile_matching/explainability.py` | Per-candidate explainability: score breakdown, strengths/gaps, detailed report, saving |
+| `profile_matching/markdown.py` | Small Markdown helpers (tables, escaping) |
 | `profile_matching/changes.py` | Requirement and ranking diffs with a reason for every move |
 | `main.py` | Single CLI entry point |
 | `resumes/` | Demo dataset: 100 resumes (12 hand-written + 88 synthetic) in PDF, DOCX and TXT |
@@ -99,7 +103,7 @@ One-shot screening (`python matching_agent.py --jd-file ...`):
 
 ```
 START → parse_jd → extract_requirements → search_resumes → rank_candidates
-      → assess_candidate ×N (parallel) → finalize_ranking → generate_report → END
+      → assess_candidate ×N (parallel) → finalize_ranking → suggest_improvements → generate_report → END
 ```
 
 The conversational graph (`python matching_agent.py`) adds the human feedback
@@ -111,7 +115,7 @@ START → route_intent ─┬─ new_search → parse_jd → extract_requirement
                       ├─ ask → assistant ⇄ tools → human_feedback
                       └─ end → END
 search_resumes → rank_candidates → assess_candidate ×N → finalize_ranking
-               → [explain_changes, after a refine] → generate_report
+               → suggest_improvements → [explain_changes, after a refine] → generate_report
 generate_report → human_feedback (waits for the user) → route_intent
 ```
 
@@ -162,8 +166,9 @@ tool calls are closed, and the chat carries on.
 | `rank_candidates` | Candidates passing every must-have, best score first; keeps the top `SHORTLIST_SIZE` |
 | `assess_candidate` | Round 2, one per shortlisted candidate in parallel (`Send`): deep review of the full resume |
 | `finalize_ranking` | Re-ranks by final score, then round 3: hire/no-hire for the whole shortlist |
+| `suggest_improvements` | Borderline candidates (final 60–74): what would make them a clear hire |
 | `explain_changes` | After a refinement only: what changed and why (see below) |
-| `generate_report` | Markdown report (requirements, ranking table with every round, recommendations, reasoning, closest knocked-out candidates) and a chat summary |
+| `generate_report` | Shortlist report and chat summary; saves the summary and one detailed report per candidate (see Explainability) |
 
 The state (`profile_matching/agent/state.py`) holds the conversation
 (`messages`), the job understanding (`job_description`, `requirements`,
@@ -194,6 +199,35 @@ changes caused by round 2 are explained like any other ("deep analysis 79 →
 A full three-round screen of 100 resumes takes about 35 seconds with
 `gpt-6-luna`, almost all of it the deep reviews.
 
+### Explainability
+
+Every screening explains itself at three levels, all rendered from computed
+results so they never disagree with the ranking:
+
+- **Shortlist report** (`summary.md`, shown in chat): requirements, what
+  changed (after a refinement), a table with final / retrieval / deep scores,
+  must-have status and the recommendation, then per candidate the committee's
+  rationale, the deep-analysis summary, top strengths and gaps, improvement
+  suggestions for borderline candidates, the retrieval reasoning and a resume
+  excerpt; finally the closest knocked-out candidates.
+- **Detailed match report** per candidate (`candidates/NN-<id>.md`, or ask
+  "show me Maria's report"):
+  - how the score adds up (each component's value, weight and points);
+  - must-have checks and the evidence per requirement (strong / partial / missing, quoted);
+  - strengths, gaps and risk flags;
+  - improvement suggestions: the gap, what the candidate could do, and how the
+    recruiter can verify it;
+  - retrieval reasoning with resume excerpts.
+
+  Candidates who were only screened in round 1 get strengths and gaps derived
+  from their must-have checks and skills.
+- **Change explanations** after a refinement (see above).
+
+Reports are saved to a new timestamped folder under `REPORTS_DIR` after every
+screening, so each refinement keeps its own record. In chat, the
+`get_candidate_report` tool's report is shown verbatim; the assistant only
+adds a short takeaway, so a computed report is never retold by the model.
+
 ## Agent tools
 
 `make_tools(services)` builds every tool the agent can call. Each tool takes
@@ -209,6 +243,7 @@ as an unknown candidate or an unreadable file, are returned to the model as
 | `extract_requirements(jd)` | Must-have vs nice-to-have from JD text, a request or a JD file |
 | `compare_candidates(candidate_ids)` | 2–5 candidates head to head: scores, must-have checks, LLM verdict |
 | `generate_interview_questions(candidate_id, count)` | Questions aimed at the candidate's gaps, unverified claims and strengths |
+| `get_candidate_report(candidate_id)` | The detailed match report of a screened candidate |
 
 Candidates are referred to by id (the resume file stem without `resume_`, e.g.
 `maria_garcia`), full name or a unique part of a name. An ambiguous reference

@@ -16,6 +16,11 @@ def _optional_float(name: str) -> float | None:
     return float(value) if value not in (None, "") else None
 
 
+def _flag(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    return default if value in (None, "") else value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Settings:
     llm_model: str = resume_rag.DEFAULT_LLM_MODEL
@@ -30,6 +35,8 @@ class Settings:
     shortlist_size: int = 10
     # 1: retrieval only; 2: + deep analysis of the shortlist; 3: + hire/no-hire decisions.
     screening_rounds: int = 3
+    # Save the shortlist and per-candidate reports under reports_dir after every screening.
+    save_reports: bool = True
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -43,6 +50,7 @@ class Settings:
             reports_dir=os.getenv("REPORTS_DIR") or defaults.reports_dir,
             shortlist_size=int(os.getenv("SHORTLIST_SIZE") or defaults.shortlist_size),
             screening_rounds=int(os.getenv("SCREENING_ROUNDS") or defaults.screening_rounds),
+            save_reports=_flag("SAVE_REPORTS", defaults.save_reports),
         )
 
     def __post_init__(self) -> None:

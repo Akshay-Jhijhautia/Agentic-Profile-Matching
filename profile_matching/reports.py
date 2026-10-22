@@ -1,4 +1,6 @@
-"""Markdown reports and chat summaries built from screening results.
+"""Cohort-level reports and chat text built from screening results: the
+shortlist report, what changed after a refinement, the chat summary and the
+assistant's context. Per-candidate rendering lives in ``explainability``.
 
 Everything here is deterministic: reports restate the scores, checks and
 reasoning already computed, so they never disagree with the ranking.
@@ -6,6 +8,8 @@ reasoning already computed, so they never disagree with the ranking.
 
 from __future__ import annotations
 
+from .explainability import decision_cell, must_have_cell, summary_section
+from .markdown import join, or_dash, table
 from .schemas import CandidateMatch, RankChange, RankingDiff, Requirements
 
 # Knocked-out candidates listed so a strict search still shows who came close.
@@ -13,14 +17,10 @@ NEAR_MISSES = 3
 SUMMARY_TOP = 3
 
 
-def _join(items: list[str], empty: str = "none") -> str:
-    return ", ".join(items) if items else empty
-
-
 def requirements_lines(requirements: Requirements) -> list[str]:
     lines = [
-        f"**Must have:** {_join([r.label for r in requirements.must_have])}",
-        f"**Nice to have:** {_join(requirements.nice_to_have)}",
+        f"**Must have:** {join([r.label for r in requirements.must_have])}",
+        f"**Nice to have:** {join(requirements.nice_to_have)}",
     ]
     if requirements.min_total_years:
         lines.append(f"**Experience:** {requirements.min_total_years:g}+ years")
@@ -37,39 +37,7 @@ def _near_misses(candidates: list[CandidateMatch]) -> list[CandidateMatch]:
     return [m for m in candidates if not m.passes_must_haves][:NEAR_MISSES]
 
 
-def _must_have_cell(match: CandidateMatch) -> str:
-    if match.unverified:
-        return f"⚠ {len(match.unverified)} unverified"
-    return "✓ all met" if match.must_have_checks else "–"
-
-
-def _decision_cell(match: CandidateMatch) -> str:
-    """"✅ hire (high)", "❌ no hire (low) · borderline", or "–" before round 3."""
-    rec = match.recommendation
-    cell = "–" if rec is None else f"{'✅ hire' if rec.decision == 'hire' else '❌ no hire'} ({rec.confidence})"
-    return f"{cell} · borderline" if match.borderline else cell
-
-
-def _deep_score(match: CandidateMatch) -> int | None:
-    return match.assessment.deep_score if match.assessment else None
-
-
-def _candidate_section(match: CandidateMatch) -> list[str]:
-    lines = ["", f"## {match.rank}. {match.name} ({match.final_score})", ""]
-    rec = match.recommendation
-    if rec is not None:
-        verdict = "Hire" if rec.decision == "hire" else "No hire"
-        lines += [f"**Recommendation:** {verdict} ({rec.confidence} confidence). {rec.rationale}", ""]
-    if match.assessment is not None:
-        lines += [f"**Deep analysis ({match.assessment.deep_score}):** {match.assessment.summary}", ""]
-    lines.append(f"**Retrieval ({match.match_score}):** {match.reasoning}")
-    if match.excerpts:
-        lines += ["", f"> {match.excerpts[0]}"]
-    return lines
-
-
-def _or_dash(value: int | None) -> str:
-    return "–" if value is None else str(value)
+# --- what changed --------------------------------------------------------------------------------
 
 
 def _movement(change: RankChange) -> str:
@@ -88,13 +56,17 @@ def changes_section(diff: RankingDiff) -> list[str]:
     lines += [f"- {change}" for change in diff.requirement_changes] or ["- The requirements did not change."]
     moved = diff.of_kind("new", "dropped", "up", "down")
     if moved:
-        lines += ["", "| Candidate | Change | Score | Why |", "|---|---|---|---|"]
-        for change in moved:
-            score = f"{_or_dash(change.old_score)} → {_or_dash(change.new_score)}"
-            lines.append(f"| {change.name} | {_movement(change)} | {score} | {_join(change.reasons, '–')} |")
+        rows = [
+            [c.name, _movement(c), f"{or_dash(c.old_score)} → {or_dash(c.new_score)}", join(c.reasons, "–")]
+            for c in moved
+        ]
+        lines += ["", *table(["Candidate", "Change", "Score", "Why"], rows)]
     else:
         lines += ["", "The shortlist order is unchanged."]
     return lines + [""]
+
+
+# --- shortlist report and chat summary -----------------------------------------------------------------
 
 
 def shortlist_report(
@@ -103,9 +75,9 @@ def shortlist_report(
     shortlist: list[CandidateMatch],
     diff: RankingDiff | None = None,
 ) -> str:
-    """The full shortlist report: requirements, what changed (after a refinement),
-    ranking table with every round's scores and the recommendation, per-candidate
-    reasoning and near misses."""
+    """The shortlist report: requirements, what changed (after a refinement), the
+    ranking table with every round's scores and the recommendation, a block per
+    candidate (strengths, gaps, improvements) and the closest knocked-out candidates."""
     passing = _passing(candidates)
     lines = [f"# Shortlist: {requirements.role_title}", ""]
     lines += [f"- {line}" for line in requirements_lines(requirements)] + [""]
@@ -116,25 +88,22 @@ def shortlist_report(
         f"{len(candidates) - passing} were knocked out."
     )
     if shortlist:
-        lines += [
-            "",
-            "| # | Candidate | Score | Retrieval | Deep | Must-haves | Recommendation |",
-            "|---|---|---|---|---|---|---|",
+        rows = [
+            [m.rank, f"{m.name} (`{m.id}`)", m.final_score, m.match_score,
+             or_dash(m.assessment.deep_score if m.assessment else None), must_have_cell(m), decision_cell(m)]
+            for m in shortlist
         ]
+        header = ["#", "Candidate", "Score", "Retrieval", "Deep", "Must-haves", "Recommendation"]
+        lines += ["", *table(header, rows)]
         for m in shortlist:
-            lines.append(
-                f"| {m.rank} | {m.name} (`{m.id}`) | {m.final_score} | {m.match_score} | "
-                f"{_or_dash(_deep_score(m))} | {_must_have_cell(m)} | {_decision_cell(m)} |"
-            )
-        for m in shortlist:
-            lines += _candidate_section(m)
+            lines += summary_section(m, requirements)
     else:
         lines += ["", "**No candidate meets every must-have.**"]
 
     misses = _near_misses(candidates)
     if misses:
         lines += ["", "## Closest knocked-out candidates", ""]
-        lines += [f"- {m.name} (`{m.id}`, {m.match_score}): fails {_join(m.failed_requirements)}" for m in misses]
+        lines += [f"- {m.name} (`{m.id}`, {m.match_score}): fails {join(m.failed_requirements)}" for m in misses]
     return "\n".join(lines) + "\n"
 
 
@@ -144,10 +113,10 @@ def _recommendation_summary(shortlist: list[CandidateMatch]) -> list[str]:
     if not decided:
         return []
     hires = [m.name for m in decided if m.recommendation.decision == "hire"]
-    sentences = [f"Recommended to advance: {_join(hires)}." if hires else "No candidate is recommended to advance."]
+    sentences = [f"Recommended to advance: {join(hires)}." if hires else "No candidate is recommended to advance."]
     borderline = [f"{m.name} ({m.final_score})" for m in shortlist if m.borderline]
     if borderline:
-        sentences.append(f"Borderline: {_join(borderline)}.")
+        sentences.append(f"Borderline: {join(borderline)}.")
     return sentences
 
 
@@ -169,7 +138,7 @@ def shortlist_summary(
     closest = misses[0]
     return (
         f"{head} The closest is {closest.name} ({closest.match_score}), who fails "
-        f"{_join(closest.failed_requirements)}. Consider relaxing that requirement."
+        f"{join(closest.failed_requirements)}. Consider relaxing that requirement."
     )
 
 
@@ -186,10 +155,10 @@ def conversation_context(
     lines.append(f"Screened {len(candidates)} resumes; {_passing(candidates)} pass every must-have.")
     if shortlist:
         lines.append("Shortlist (rank. name (id): final score, must-haves, recommendation):")
-        lines += [f"{m.rank}. {m.name} ({m.id}): {m.final_score}, {_must_have_cell(m)}, {_decision_cell(m)}"
+        lines += [f"{m.rank}. {m.name} ({m.id}): {m.final_score}, {must_have_cell(m)}, {decision_cell(m)}"
                   for m in shortlist]
     if diff is not None:
-        lines.append(f"Latest refinement: {_join(diff.requirement_changes, 'no requirement changes')}")
-        lines += [f"- {c.name}: {_movement(c)}, {_join(c.reasons, 'no reason recorded')}"
+        lines.append(f"Latest refinement: {join(diff.requirement_changes, 'no requirement changes')}")
+        lines += [f"- {c.name}: {_movement(c)}, {join(c.reasons, 'no reason recorded')}"
                   for c in diff.of_kind("new", "dropped", "up", "down")]
     return "\n".join(lines)

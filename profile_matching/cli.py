@@ -24,6 +24,8 @@ from .rag import resume_rag
 
 # Graph steps allowed per user message (a tool loop is two steps per call).
 RECURSION_LIMIT = 60
+# Tools whose result is a Markdown report shown to the user verbatim, under this key.
+DIRECT_REPORT_TOOLS = {"get_candidate_report": "report"}
 MAX_ARG_CHARS = 80
 EXAMPLES = (
     "Find me candidates with React and 3+ years experience",
@@ -151,6 +153,11 @@ class ChatSession:
             hires = sum(m.recommendation.decision == "hire" for m in decided)
             self._note(f"Final round: {hires} hire, {len(decided) - hires} no hire.")
 
+    def _on_suggest_improvements(self, change: dict) -> None:
+        improved = [m.name for m in change["shortlist"] if m.improvements]
+        if improved:
+            self._note(f"Improvement suggestions for borderline: {', '.join(improved)}")
+
     def _on_generate_report(self, change: dict) -> None:
         self.report = change["report"]
         self.show_report()
@@ -167,8 +174,12 @@ class ChatSession:
         for message in change["messages"]:
             if _tool_failed(message):
                 self.console.print(f"[yellow]← {message.name} failed: {message.text[:200]}[/yellow]")
-            else:
-                self._note(f"← {message.name} done")
+                continue
+            self._note(f"← {message.name} done")
+            key = DIRECT_REPORT_TOOLS.get(message.name)
+            if key:  # computed reports are shown as-is, never retold by the model
+                report = json.loads(message.text)[key]
+                self.console.print(Panel(Markdown(report), title="Candidate report", border_style="cyan"))
 
     def show_report(self) -> None:
         if self.report:

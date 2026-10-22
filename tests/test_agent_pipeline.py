@@ -1,5 +1,6 @@
 import dataclasses
 import warnings
+from pathlib import Path
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
@@ -48,10 +49,10 @@ def test_graph_is_the_pipeline(services):
     assert edges == set(zip(path, path[1:])) | {
         # round 2 fans out per candidate, or is skipped when nothing needs assessing
         ("rank_candidates", "assess_candidate"), ("rank_candidates", "finalize_ranking"),
-        ("assess_candidate", "finalize_ranking"),
+        ("assess_candidate", "finalize_ranking"), ("finalize_ranking", "suggest_improvements"),
         # explain_changes sits between ranking and the report, but only runs after a refinement
-        ("finalize_ranking", "explain_changes"), ("explain_changes", "generate_report"),
-        ("finalize_ranking", "generate_report"),
+        ("suggest_improvements", "explain_changes"), ("explain_changes", "generate_report"),
+        ("suggest_improvements", "generate_report"),
         ("generate_report", "__end__"),
     }
 
@@ -158,14 +159,17 @@ def test_check_ready_needs_a_key_for_the_real_model(services, monkeypatch):
         services.check_ready()
 
 
-def test_cli_prints_and_saves_the_report(services, monkeypatch, tmp_path, capsys):
+def test_cli_prints_the_report_and_saves_it(services, monkeypatch, capsys):
     services.model = FakeChatModel({Requirements: PYTHON_ROLE, **SCREENING_RESPONSES})
+    services.settings = dataclasses.replace(services.settings, screening_rounds=1, shortlist_size=2)
     monkeypatch.setattr(matching_agent.Services, "from_settings", lambda: services)
-    out = tmp_path / "report.md"
-    assert matching_agent.main(["Python backend engineer", "--out", str(out)]) == 0
-    printed = capsys.readouterr().out
-    assert printed.startswith("# Shortlist: Python Backend Engineer")
-    assert out.read_text() == printed.removesuffix("\n")
+    assert matching_agent.main(["Python backend engineer"]) == 0
+    captured = capsys.readouterr()
+    assert captured.out.startswith("# Shortlist: Python Backend Engineer")
+    (folder,) = Path(services.settings.reports_dir).iterdir()
+    assert f"Reports saved to {resume_rag.display_path(str(folder))}" in captured.err
+    assert (folder / "summary.md").read_text() == captured.out.removesuffix("\n")
+    assert len(list((folder / "candidates").iterdir())) == 2
 
 
 def test_cli_reports_errors(services, monkeypatch, capsys):

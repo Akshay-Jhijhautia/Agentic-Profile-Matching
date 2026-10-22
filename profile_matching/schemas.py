@@ -12,7 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
 from .candidates import candidate_id
-from .rag import skills_vocab
+from .rag import job_matcher, skills_vocab
 
 # Matches ``resume_rag.DEGREE_LEVELS`` so degree must-haves reuse its checks.
 DegreeLevel = Literal["Associate", "Bachelor's", "Master's", "PhD"]
@@ -241,11 +241,40 @@ class Recommendation(BaseModel):
     rationale: str
 
 
+class Improvement(BaseModel):
+    gap: str = Field(description="The gap or doubt this addresses.")
+    suggestion: str = Field(description="What the candidate could do or show to close it.")
+    how_to_verify: str = Field(description="How the recruiter can check it: a question, portfolio, reference.")
+
+
+class CandidateImprovements(BaseModel):
+    candidate_id: str = Field(description="The candidate's id exactly as given in the input.")
+    improvements: list[Improvement] = Field(description="Two to four, most important first.")
+
+
+class ImprovementSuggestions(BaseModel):
+    """Suggestions for borderline candidates: what would turn them into a clear hire."""
+
+    candidates: list[CandidateImprovements]
+
+
 # Final score = DEEP_WEIGHT × deep score + (1 − DEEP_WEIGHT) × retrieval score. The deep
 # review reads the whole resume, so it outweighs retrieval once it exists.
 DEEP_WEIGHT = 0.6
 # Final scores in [low, high) are borderline: worth a second look before rejecting.
 BORDERLINE_BAND = (60, 75)
+# The retrieval score's signals and their weights (see ``job_matcher.hybrid_score``).
+RETRIEVAL_WEIGHTS = {
+    "semantic": job_matcher.SEMANTIC_WEIGHT,
+    "keyword": job_matcher.KEYWORD_WEIGHT,
+    "skill_coverage": job_matcher.SKILL_WEIGHT,
+}
+COMPONENT_LABELS = {
+    "semantic": "semantic fit",
+    "keyword": "keyword match",
+    "skill_coverage": "must-have skill coverage",
+    "deep": "deep analysis",
+}
 
 
 class CandidateMatch(BaseModel):
@@ -268,6 +297,7 @@ class CandidateMatch(BaseModel):
     excerpts: list[str]
     assessment: Assessment | None = None  # round 2
     recommendation: Recommendation | None = None  # round 3
+    improvements: list[Improvement] | None = None  # borderline candidates only
 
     @computed_field
     @property
@@ -281,6 +311,25 @@ class CandidateMatch(BaseModel):
         if self.assessment is None:
             return self.match_score
         return round(DEEP_WEIGHT * self.assessment.deep_score + (1 - DEEP_WEIGHT) * self.match_score)
+
+    def retrieval_weights(self) -> dict[str, float]:
+        """Effective weight of each retrieval signal. Without must-have skills there is no
+        coverage, and its weight is shared out as ``job_matcher.hybrid_score`` does."""
+        if self.score_breakdown.skill_coverage is not None:
+            return dict(RETRIEVAL_WEIGHTS)
+        total = RETRIEVAL_WEIGHTS["semantic"] + RETRIEVAL_WEIGHTS["keyword"]
+        return {name: RETRIEVAL_WEIGHTS[name] / total for name in ("semantic", "keyword")}
+
+    def contributions(self) -> dict[str, float]:
+        """Points each component adds to the 0-100 final score (they sum to it before rounding)."""
+        retrieval_share = 1 - DEEP_WEIGHT if self.assessment else 1
+        points = {
+            name: 100 * retrieval_share * weight * getattr(self.score_breakdown, name)
+            for name, weight in self.retrieval_weights().items()
+        }
+        if self.assessment is not None:
+            points["deep"] = DEEP_WEIGHT * self.assessment.deep_score
+        return points
 
     @property
     def borderline(self) -> bool:

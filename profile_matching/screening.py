@@ -8,22 +8,35 @@
    (the graph runs these in parallel) and the shortlist is re-ranked by the
    final score, which blends the deep score with the retrieval score.
 3. Final decision: one committee call decides hire or no-hire for the whole
-   shortlist, so decisions are calibrated against each other.
+   shortlist, so decisions are calibrated against each other. Borderline
+   candidates then get improvement suggestions: what would make them a clear hire.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from typing import TypeVar
 
 from . import llm, prompts
 from .candidates import CandidateProfile
-from .schemas import Assessment, CandidateMatch, HiringDecisions, Recommendation, Requirements
+from .schemas import (
+    Assessment,
+    CandidateMatch,
+    HiringDecisions,
+    ImprovementSuggestions,
+    Recommendation,
+    Requirements,
+)
 from .services import Services
 
 # Final score at or above which a candidate the committee skipped defaults to hire.
 FALLBACK_HIRE_SCORE = 75
+# Shortlist fields the committee and the improvement advisor see per candidate.
+COHORT_FIELDS = {"id", "name", "final_score", "match_score", "passes_must_haves", "assessment", "recommendation"}
+
+T = TypeVar("T")
 
 
 def rank_matches(matches: Iterable[CandidateMatch]) -> list[CandidateMatch]:
@@ -100,24 +113,53 @@ def _fallback(match: CandidateMatch) -> Recommendation:
                           rationale=f"No committee decision; based on the final score of {match.final_score}.")
 
 
+def _cohort_payload(requirements: Requirements, matches: list[CandidateMatch]) -> str:
+    candidates = [
+        match.model_dump(include=COHORT_FIELDS) | {"unverified_must_haves": match.unverified}
+        for match in matches
+    ]
+    return json.dumps({"requirements": requirements.model_dump(), "candidates": candidates}, ensure_ascii=False)
+
+
+def by_candidate(services: Services, items: Iterable[T], ref: Callable[[T], str]) -> dict[str, T]:
+    """LLM answers keyed by candidate id; the LLM sometimes names a candidate instead,
+    and answers about unknown candidates are dropped."""
+    found = {}
+    for item in items:
+        profile = services.candidates.find(ref(item))
+        if profile is not None:
+            found[profile.id] = item
+    return found
+
+
 def decide(services: Services, requirements: Requirements, shortlisted: list[CandidateMatch]) -> list[CandidateMatch]:
     """Round 3: hire or no-hire for every shortlisted candidate, in one committee call."""
     if not shortlisted:
         return []
-    candidates = [
-        match.model_dump(include={"id", "name", "final_score", "match_score", "passes_must_haves", "assessment"})
-        | {"unverified_must_haves": match.unverified}
+    payload = _cohort_payload(requirements, shortlisted)
+    result = llm.structured(HiringDecisions, prompts.HIRING_DECISIONS, payload, model=services.model)
+    decisions = by_candidate(services, result.decisions, lambda d: d.candidate_id)
+    return [
+        match.model_copy(update={"recommendation": (
+            Recommendation(**decisions[match.id].model_dump(exclude={"candidate_id"}))
+            if match.id in decisions else _fallback(match)
+        )})
         for match in shortlisted
     ]
-    payload = json.dumps({"requirements": requirements.model_dump(), "candidates": candidates}, ensure_ascii=False)
-    result = llm.structured(HiringDecisions, prompts.HIRING_DECISIONS, payload, model=services.model)
 
-    by_id = {}
-    for decision in result.decisions:
-        profile = services.candidates.find(decision.candidate_id)  # the LLM may answer with a name
-        if profile is not None:
-            by_id[profile.id] = Recommendation(**decision.model_dump(exclude={"candidate_id"}))
+
+def suggest_improvements(
+    services: Services, requirements: Requirements, shortlisted: list[CandidateMatch]
+) -> list[CandidateMatch]:
+    """Improvement suggestions for the borderline candidates, in one call; others unchanged."""
+    borderline = [match for match in shortlisted if match.borderline]
+    if not borderline:
+        return shortlisted
+    payload = _cohort_payload(requirements, borderline)
+    result = llm.structured(ImprovementSuggestions, prompts.IMPROVEMENT_SUGGESTIONS, payload, model=services.model)
+    suggestions = by_candidate(services, result.candidates, lambda c: c.candidate_id)
     return [
-        match.model_copy(update={"recommendation": by_id.get(match.id) or _fallback(match)})
+        match.model_copy(update={"improvements": suggestions[match.id].improvements})
+        if match.borderline and match.id in suggestions else match
         for match in shortlisted
     ]

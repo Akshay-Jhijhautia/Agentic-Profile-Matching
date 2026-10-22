@@ -25,6 +25,7 @@ from langgraph.graph.message import add_messages
 from ..schemas import (
     Assessment,
     CandidateMatch,
+    Improvement,
     MustHaveCheck,
     RankChange,
     Recommendation,
@@ -53,6 +54,7 @@ class AgentState(TypedDict, total=False):
     ranking_diff: RankingDiff | None  # set by a refinement, cleared by a new search
     assessments: Annotated[dict[str, Assessment], merge_dicts]  # see screening.assessment_key
     report: str
+    report_dir: str | None  # where the latest reports were saved
     intent: str  # the latest routing decision (see ``routing.ROUTES``)
 
 
@@ -61,7 +63,7 @@ class AgentState(TypedDict, total=False):
 # including nested ones, is registered here.
 STATE_MODELS = (
     Requirements, SkillRequirement, CandidateMatch, MustHaveCheck, ScoreBreakdown, RankingDiff, RankChange,
-    Assessment, RequirementEvidence, Recommendation,
+    Assessment, RequirementEvidence, Recommendation, Improvement,
 )
 
 

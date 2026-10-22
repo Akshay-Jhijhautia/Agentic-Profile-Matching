@@ -1,5 +1,5 @@
-"""Candidate analysis behind the agent's tools: head-to-head comparison and
-interview questions.
+"""Candidate analysis behind the agent's tools: head-to-head comparison,
+interview questions and detailed match reports.
 
 Each analysis has a deterministic part (facts, scores, must-have checks from
 the Milestone 2 matcher) and an LLM part that reasons over those facts and the
@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import json
 
-from . import llm, prompts, screening
+from . import explainability, llm, prompts, screening
 from .candidates import CandidateProfile
-from .schemas import ComparisonVerdict, InterviewQuestions, Requirements
+from .schemas import CandidateMatch, ComparisonVerdict, InterviewQuestions, Requirements
 from .services import Services
 
 COMPARE_LIMITS = (2, 5)
@@ -129,3 +129,21 @@ def generate_interview_questions(
         "focus_areas": focus,
         "questions": [q.model_dump() for q in result.questions[:count]],
     }
+
+
+def detailed_report(
+    services: Services,
+    ref: str,
+    requirements: Requirements | None,
+    shortlist: list[CandidateMatch],
+    candidates: list[CandidateMatch],
+) -> str:
+    """The detailed match report of a screened candidate: the shortlisted record (with
+    rounds 2 and 3) when there is one, otherwise their round-1 screening."""
+    if requirements is None:
+        raise ValueError("No search has run yet. Describe a role first.")
+    profile = services.candidates.resolve(ref)
+    match = next((m for m in [*shortlist, *candidates] if m.id == profile.id), None)
+    if match is None:
+        raise LookupError(f"{profile.name} was not screened in the current search")
+    return explainability.candidate_report(match, requirements)

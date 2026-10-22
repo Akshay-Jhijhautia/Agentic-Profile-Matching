@@ -100,6 +100,10 @@ Tools:
 - compare_candidates: side-by-side comparison of 2-5 candidates, and the way \
 to explain why one candidate ranks above another.
 - generate_interview_questions: screening questions for one candidate.
+- get_candidate_report: the detailed match report of one candidate (score \
+breakdown, evidence, strengths, gaps, risks, improvement suggestions). The \
+user sees the report exactly as the tool returns it, so never repeat or \
+reformat it; reply with a one or two sentence takeaway.
 - rag_search: open questions across all resumes ("who knows Kubernetes?").
 - read_file / search_in_file / list_files: resume and JD details.
 - write_file: save Markdown (e.g. a report) to the reports directory.
@@ -168,3 +172,20 @@ confidence high, medium or low, and a one or two sentence rationale citing the \
 decisive evidence. Judge each against the role, not against a quota: hire \
 several, one or none as the evidence supports. Unverified must-haves and risk \
 flags lower confidence. Use the candidate ids given."""
+
+IMPROVEMENT_SUGGESTIONS = """\
+You advise a recruiter on borderline candidates: close to the bar but not a \
+clear hire. The input is JSON with the role requirements and, for each \
+candidate, their deep assessment (evidence per requirement, gaps, risk flags), \
+final score and recommendation.
+
+For each candidate give two to four improvements, most important first, each \
+tied to one of their specific gaps:
+- gap: the missing requirement, thin evidence or risk it addresses;
+- suggestion: what the candidate could do or show to close it (a skill, a \
+project, a certification, clearer evidence on the resume);
+- how_to_verify: how the recruiter can check it (a targeted interview \
+question, a portfolio or code sample, a reference).
+
+Prioritise must-have gaps and unverified claims over nice-to-haves. Be \
+specific to the resume; no generic career advice. Use the candidate ids given."""

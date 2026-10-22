@@ -7,7 +7,7 @@ from profile_matching.schemas import SkillRequirement
 from tests.fakes import FakeChatModel
 
 ENV_VARS = ("OPENAI_MODEL", "OPENAI_TEMPERATURE", "OPENAI_TIMEOUT", "OPENAI_MAX_RETRIES", "CHROMA_DB_DIR",
-            "REPORTS_DIR", "SHORTLIST_SIZE", "SCREENING_ROUNDS")
+            "REPORTS_DIR", "SHORTLIST_SIZE", "SCREENING_ROUNDS", "SAVE_REPORTS")
 
 
 @pytest.fixture
@@ -30,7 +30,8 @@ def test_settings_from_env(clean_env):
     clean_env.setenv("REPORTS_DIR", "/tmp/reports")
     clean_env.setenv("SHORTLIST_SIZE", "5")
     clean_env.setenv("SCREENING_ROUNDS", "2")
-    assert Settings.from_env() == Settings("gpt-test", 0.3, 5.0, 0, "/tmp/db", "/tmp/reports", 5, 2)
+    clean_env.setenv("SAVE_REPORTS", "off")
+    assert Settings.from_env() == Settings("gpt-test", 0.3, 5.0, 0, "/tmp/db", "/tmp/reports", 5, 2, False)
 
 
 @pytest.mark.parametrize("field, value", [("screening_rounds", 0), ("screening_rounds", 4), ("shortlist_size", 0)])

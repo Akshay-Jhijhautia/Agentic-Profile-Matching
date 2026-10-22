@@ -6,7 +6,8 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, trim
 from langchain_core.tools import BaseTool
 from langgraph.types import Send, interrupt
 
-from .. import changes, llm, prompts, reports, screening
+from .. import changes, explainability, llm, prompts, reports, screening
+from ..rag import resume_rag
 from ..requirements import extract_requirements, load_job_description
 from ..schemas import ChangeNarrative, RankingDiff, Requirements
 from ..services import Services
@@ -88,6 +89,12 @@ class PipelineNodes:
             shortlist = screening.decide(self.services, requirements, shortlist)
         return {"shortlist": shortlist}
 
+    def suggest_improvements(self, state: AgentState) -> dict:
+        """Borderline candidates: what would turn them into a clear hire (needs round 2)."""
+        if not any(match.borderline for match in state["shortlist"]):
+            return {}
+        return {"shortlist": screening.suggest_improvements(self.services, state["requirements"], state["shortlist"])}
+
     def explain_changes(self, state: AgentState) -> dict:
         """After a refinement: what changed in the requirements and the ranking, and why."""
         history = state["requirements_history"]
@@ -102,10 +109,18 @@ class PipelineNodes:
         """Write the shortlist report and a short summary for the conversation."""
         parts = (state["requirements"], state["candidates"], state["shortlist"])
         diff = state.get("ranking_diff")
+        report = reports.shortlist_report(*parts, diff=diff)
         summary = reports.shortlist_summary(*parts)
         if diff is not None:
             summary = f"{self._narrate(diff)}\n\n{summary}"
-        return {"report": reports.shortlist_report(*parts, diff=diff), "messages": [AIMessage(summary)]}
+        report_dir = None
+        if self.services.settings.save_reports:
+            folder = explainability.save_reports(
+                self.services.settings.reports_dir, state["requirements"], state["shortlist"], report
+            )
+            report_dir = resume_rag.display_path(str(folder))
+            summary += f"\n\nReports saved to `{report_dir}`."
+        return {"report": report, "report_dir": report_dir, "messages": [AIMessage(summary)]}
 
     def _narrate(self, diff: RankingDiff) -> str:
         if not diff.requirement_changes:

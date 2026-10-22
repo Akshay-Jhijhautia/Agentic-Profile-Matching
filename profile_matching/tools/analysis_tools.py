@@ -55,4 +55,17 @@ def make_analysis_tools(services: Services) -> list[BaseTool]:
         role = analysis.as_requirements(state.get("requirements"))
         return analysis.generate_interview_questions(services, candidate_id, role, count)
 
-    return [extract_requirements, compare_candidates, generate_interview_questions]
+    @agent_tool
+    def get_candidate_report(candidate_id: str, state: Annotated[dict, InjectedState]) -> dict:
+        """Get the detailed match report of a candidate in the current search: how the score adds up, must-have checks, evidence per requirement, strengths, gaps, risk flags and improvement suggestions.
+
+        Args:
+            candidate_id: Candidate id or name.
+        """
+        report = analysis.detailed_report(
+            services, candidate_id, analysis.as_requirements(state.get("requirements")),
+            state.get("shortlist", []), state.get("candidates", []),
+        )
+        return {"candidate": candidate_id, "report": report}
+
+    return [extract_requirements, compare_candidates, generate_interview_questions, get_candidate_report]

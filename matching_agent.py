@@ -4,7 +4,8 @@ One-shot (``conversational=False``):
 
     START → parse_jd → extract_requirements → search_resumes (round 1: all resumes)
           → rank_candidates (top N) → assess_candidate ×N in parallel (round 2)
-          → finalize_ranking (re-rank + round 3 hire/no-hire) → generate_report → END
+          → finalize_ranking (re-rank + round 3 hire/no-hire)
+          → suggest_improvements (borderline candidates) → generate_report → END
 
 Conversational (``conversational=True``), with a human feedback loop:
 
@@ -13,7 +14,7 @@ Conversational (``conversational=True``), with a human feedback loop:
                           ├─ ask → assistant ⇄ tools → human_feedback
                           └─ end → END
     search_resumes → rank_candidates → assess_candidate ×N → finalize_ranking
-                   → [explain_changes, after a refine] → generate_report
+                   → suggest_improvements → [explain_changes, after a refine] → generate_report
     generate_report → human_feedback (waits for the user) → route_intent
 
 Usage:
@@ -21,6 +22,9 @@ Usage:
     python matching_agent.py --jd-file job_descriptions/frontend_react.txt
     python matching_agent.py "Find me candidates with React and 3+ years experience"
     python main.py chat | screen ...                           same, via the main CLI
+
+Every screening saves its shortlist report and one detailed report per candidate
+under REPORTS_DIR (see ``explainability.save_reports``).
 """
 
 from __future__ import annotations
@@ -39,13 +43,13 @@ from profile_matching import cli
 from profile_matching.agent.nodes import ConversationNodes, PipelineNodes
 from profile_matching.agent.routing import ROUTES, IntentRouter, after_ranking, next_step
 from profile_matching.agent.state import AgentState, make_checkpointer
-from profile_matching.rag import fs_tools, resume_rag
+from profile_matching.rag import resume_rag
 from profile_matching.services import Services
 from profile_matching.tools import make_tools
 
 # Linear steps up to the round-1 shortlist; then round 2 fans out, round 3 finalises.
 PIPELINE = ("parse_jd", "extract_requirements", "search_resumes", "rank_candidates")
-ASSESS, FINALIZE, REPORT = "assess_candidate", "finalize_ranking", "generate_report"
+ASSESS, FINALIZE, IMPROVE, REPORT = "assess_candidate", "finalize_ranking", "suggest_improvements", "generate_report"
 # Runs between ranking and the report, only when the turn refined the requirements.
 EXPLAIN = "explain_changes"
 
@@ -62,13 +66,14 @@ def build_graph(
     """
     pipeline = PipelineNodes(services)
     builder = StateGraph(AgentState)
-    for name in (*PIPELINE, ASSESS, FINALIZE, EXPLAIN, REPORT):
+    for name in (*PIPELINE, ASSESS, FINALIZE, IMPROVE, EXPLAIN, REPORT):
         builder.add_node(name, getattr(pipeline, name))
     for current, following in pairwise(PIPELINE):
         builder.add_edge(current, following)
     builder.add_conditional_edges(PIPELINE[-1], pipeline.fan_out_assessments, [ASSESS, FINALIZE])
     builder.add_edge(ASSESS, FINALIZE)
-    builder.add_conditional_edges(FINALIZE, after_ranking, [EXPLAIN, REPORT])
+    builder.add_edge(FINALIZE, IMPROVE)
+    builder.add_conditional_edges(IMPROVE, after_ranking, [EXPLAIN, REPORT])
     builder.add_edge(EXPLAIN, REPORT)
 
     if not conversational:
@@ -99,15 +104,11 @@ def screen(services: Services, job_description: str) -> AgentState:
     return build_graph(services).invoke({"messages": [HumanMessage(job_description)]})
 
 
-def _run_screen(services: Services, job_description: str, out: str | None) -> int:
+def _run_screen(services: Services, job_description: str) -> int:
     state = screen(services, job_description)
     print(state["report"])
-    if out:
-        written = fs_tools.write_file(out, state["report"])
-        if not written["success"]:
-            print(f"Error: {written['error']}", file=sys.stderr)
-            return 1
-        print(f"Saved to {resume_rag.display_path(written['filepath'])}", file=sys.stderr)
+    if state.get("report_dir"):
+        print(f"Reports saved to {state['report_dir']}", file=sys.stderr)
     return 0
 
 
@@ -118,7 +119,6 @@ def main(argv: list[str] | None = None) -> int:
     source = parser.add_mutually_exclusive_group()
     source.add_argument("jd", nargs="?", help="Job description text or a short request.")
     source.add_argument("--jd-file", help="Job description file (TXT, MD, PDF or DOCX).")
-    parser.add_argument("--out", help="Also save the Markdown report to this file (one-shot only).")
     args = parser.parse_args(argv)
 
     try:
@@ -126,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         services.check_ready()
         job_description = args.jd_file or args.jd
         if job_description:
-            return _run_screen(services, job_description, args.out)
+            return _run_screen(services, job_description)
     except resume_rag.CLI_ERRORS as exc:
         print(f"Error: {resume_rag.cli_error_message(exc)}", file=sys.stderr)
         return 1

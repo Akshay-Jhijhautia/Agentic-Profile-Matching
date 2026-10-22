@@ -9,7 +9,15 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel
 
-from profile_matching.schemas import Assessment, HiringDecision, HiringDecisions, RequirementEvidence
+from profile_matching.schemas import (
+    Assessment,
+    CandidateImprovements,
+    HiringDecision,
+    HiringDecisions,
+    Improvement,
+    ImprovementSuggestions,
+    RequirementEvidence,
+)
 
 
 class FakeChatModel:
@@ -72,5 +80,16 @@ def fake_committee(messages: list) -> HiringDecisions:
     ])
 
 
+def fake_advisor(messages: list) -> ImprovementSuggestions:
+    """One improvement per borderline candidate it is asked about."""
+    candidates = json.loads(messages[1].content)["candidates"]
+    return ImprovementSuggestions(candidates=[
+        CandidateImprovements(candidate_id=c["id"], improvements=[
+            Improvement(gap="No GraphQL", suggestion="Build a GraphQL API", how_to_verify="Ask for the repo"),
+        ])
+        for c in candidates
+    ])
+
+
 # Answers for every LLM call the screening rounds make; merge into a FakeChatModel's responses.
-SCREENING_RESPONSES = {Assessment: fake_assessment(), HiringDecisions: fake_committee}
+SCREENING_RESPONSES = {Assessment: fake_assessment(), HiringDecisions: fake_committee, ImprovementSuggestions: fake_advisor}

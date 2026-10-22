@@ -10,20 +10,8 @@ who were knocked out above or overtook them. The LLM only narrates this diff.
 
 from __future__ import annotations
 
-from .rag import job_matcher
-from .schemas import DEEP_WEIGHT, CandidateMatch, ChangeKind, RankChange, RankingDiff, Requirements
+from .schemas import COMPONENT_LABELS, CandidateMatch, ChangeKind, RankChange, RankingDiff, Requirements
 
-# Weights of the retrieval score, so component changes are compared by their effect on it.
-COMPONENT_WEIGHTS = {
-    "semantic": job_matcher.SEMANTIC_WEIGHT,
-    "keyword": job_matcher.KEYWORD_WEIGHT,
-    "skill_coverage": job_matcher.SKILL_WEIGHT,
-}
-COMPONENT_LABELS = {
-    "semantic": "semantic fit",
-    "keyword": "keyword match",
-    "skill_coverage": "must-have skill coverage",
-}
 # Smallest effect on the 0-100 final score worth naming as a reason.
 MIN_COMPONENT_EFFECT = 0.5
 
@@ -67,20 +55,10 @@ def _deep(match: CandidateMatch) -> int | None:
     return match.assessment.deep_score if match.assessment else None
 
 
-def _contribution(match: CandidateMatch, name: str) -> float:
-    """What one component adds to the 0-100 final score."""
-    if name == "deep":
-        return DEEP_WEIGHT * (_deep(match) or 0)
-    retrieval_share = 1 - DEEP_WEIGHT if match.assessment else 1
-    value = getattr(match.score_breakdown, name) or 0.0
-    return 100 * retrieval_share * COMPONENT_WEIGHTS[name] * value
-
-
 def _component_reason(old: CandidateMatch, new: CandidateMatch) -> str | None:
     """The score component (retrieval signal or deep analysis) that moved this candidate most."""
-    effects = {
-        name: _contribution(new, name) - _contribution(old, name) for name in (*COMPONENT_WEIGHTS, "deep")
-    }
+    before, after = old.contributions(), new.contributions()
+    effects = {name: after.get(name, 0.0) - before.get(name, 0.0) for name in COMPONENT_LABELS}
     name = max(effects, key=lambda n: abs(effects[n]))
     if abs(effects[name]) < MIN_COMPONENT_EFFECT:
         return None

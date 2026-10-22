@@ -3,7 +3,7 @@
     python main.py index [resumes/] [options]   build or refresh the vector index
     python main.py stats | list                 inspect the index
     python main.py match --jd-file JD [options] rank resumes for a job description (no agent)
-    python main.py screen --jd-file JD | "request"  run the matching agent's screening pipeline
+    python main.py screen --jd-file JD | "request"  run the matching agent's screening (reports saved)
     python main.py chat                         chat with the matching agent
 
 Each command forwards its options to the module that implements it; add
