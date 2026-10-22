@@ -110,7 +110,6 @@ class IntakeReport:
     unchanged: int
     removed: list[str]
     skipped: list[dict]  # {"file", "reason"}
-    ocr: list[str]  # read with OCR
 
     def summary(self) -> str:
         changes = f"{len(self.indexed)} new or changed, {self.unchanged} unchanged"
@@ -118,14 +117,11 @@ class IntakeReport:
             changes += f", {len(self.removed)} removed"
         heading = "Uploaded resumes" if self.folder == UPLOADS_LABEL else f"Resumes in {self.folder}"
         lines = [f"{heading}: {self.ready} ready ({changes})."]
-        if self.ocr:
-            names = ", ".join(Path(path).name for path in self.ocr)
-            lines.append(f"Read {len(self.ocr)} scanned file(s) with OCR: {names}.")
         if self.skipped:
             lines.append(f"Skipped {len(self.skipped)} file(s):")
             lines += [f"- {item['file']}: {item['reason']}" for item in self.skipped]
         if not self.ready:
-            lines.append("No readable resumes: add PDF, DOCX, TXT or MD files (or scanned PDFs/images with OCR).")
+            lines.append("No readable resumes: add PDF, DOCX, TXT or MD files with a text layer.")
         return "\n".join(lines)
 
 
@@ -175,5 +171,5 @@ class ResumePool:
         return IntakeReport(
             folder=resume_rag.display_path(str(self.folder)), ready=self.size,
             indexed=summary["indexed"], unchanged=len(summary["unchanged"]), removed=summary["removed"],
-            skipped=summary["skipped"], ocr=summary["ocr"],
+            skipped=summary["skipped"],
         )

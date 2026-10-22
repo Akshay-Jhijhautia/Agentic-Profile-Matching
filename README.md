@@ -29,18 +29,17 @@ Google Gemini, a local Ollama server or any OpenAI-compatible server (see
 [Chat model providers](#chat-model-providers)).
 
 ```bash
-pip install "profile-match[ocr] @ git+https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching.git"
+pip install "profile-match @ git+https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching.git"
 export OPENAI_API_KEY=sk-...        # or put it in ./.env or ~/.profile-match/.env
 ```
 
-The `[ocr]` extra reads scanned PDFs and image resumes (about 180 MB more);
-leave it out if all your resumes have a text layer. To work on the code:
+To work on the code:
 
 ```bash
 git clone --depth 1 https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching.git
 cd Agentic-Profile-Matching
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt     # editable install with OCR, dev tools and every provider
+pip install -r requirements.txt     # editable install with dev tools and every provider
 ```
 
 Or run it in Docker (see [Docker](#docker)).
@@ -62,7 +61,7 @@ profile-match sessions
 profile-match chat --session 20261022-1640-a3f2
 ```
 
-Resumes can be PDF, DOCX, TXT, MD, scanned PDFs or PNG/JPG images. Every
+Resumes can be PDF, DOCX, TXT or MD. Every
 screening saves `reports/<role>-<timestamp>/summary.md` (in the current
 folder) plus one detailed report per shortlisted candidate. Chat commands:
 `/resumes <folder>`, `/add <files>`, `/report`, `/reset`, `/help`, `/exit`.
@@ -104,11 +103,10 @@ docker run --rm -it -e OPENAI_API_KEY \
     profile-match chat --resumes ./applicants
 ```
 
-The image includes OCR, with its models downloaded at build time, and runs as
-a non-root user. For another provider, build with its extra
-(`--build-arg EXTRAS=ocr,anthropic`) and pass its settings with `-e`. `/data` keeps indexes, uploads and sessions between runs;
-`/work` is your folder of resumes and job descriptions, where reports are
-written.
+The image runs as a non-root user. `/data` keeps indexes, uploads and
+sessions between runs; `/work` is your folder of resumes and job descriptions,
+where reports are written. For another chat provider, build with its extra
+(`--build-arg EXTRAS=anthropic`) and pass its settings with `-e`.
 
 ## Your resumes
 
@@ -134,17 +132,17 @@ before loading any, it notes the requirements and asks for resumes.
 
   ```
   Resumes in ~/Downloads/backend-applicants: 6 ready (6 new or changed, 0 unchanged).
-  Read 1 scanned file(s) with OCR: Jordan_Rivera_CV_scan.pdf.
-  Skipped 3 file(s):
-  - candidates.xlsx: Unsupported file type '.xlsx'. Supported: .docx, .jpeg, .jpg, .md, .pdf, .png, .txt
+  Skipped 4 file(s):
+  - Jordan_Rivera_CV_scan.pdf: No text layer: this looks like a scanned PDF. Ask the candidate for a text PDF or DOCX
+  - candidates.xlsx: Unsupported file type '.xlsx'. Supported: .docx, .md, .pdf, .txt
   - empty.txt: No text could be extracted. The file may be empty or contain no readable text.
   - old_resume.doc: Legacy Word .doc is not supported; save it as .docx or PDF
   ```
 
-- **Scanned resumes.** PDFs without a text layer and PNG/JPG images are read
-  with OCR (RapidOCR, installed with pip; no system dependencies). Each is read
-  once, about a second per page. Without the OCR packages, scanned files are
-  reported with the install command.
+- **No OCR.** Candidates send text PDFs or Word files, so scanned PDFs and
+  photos are not read. A PDF with almost no text per page is reported as a
+  scan, with a request for a text file, rather than indexed as an empty
+  resume; PNG/JPG files are reported the same way.
 - **Long resumes** are trimmed by section before reaching the model. The
   header, summary, experience, skills and education are kept whole, and only
   lower-priority sections are cut.
@@ -458,13 +456,13 @@ and `list`. The agent itself needs a chat model.
 
 | Path | Purpose |
 | --- | --- |
-| `pyproject.toml` | Package metadata, dependencies (`ocr`, provider and `dev` extras) and the `profile-match` command |
+| `pyproject.toml` | Package metadata, dependencies (provider and `dev` extras) and the `profile-match` command |
 | `profile_matching/app.py` | The `profile-match` command line |
 | `profile_matching/agent/graph.py` | The LangGraph graph (`build_graph`, `screen`) |
 | `matching_agent.py`, `main.py` | Entry points for a source checkout (re-export the graph; run the CLI) |
 | `profile_matching/sessions.py` | Saved chat sessions in SQLite |
 | `profile_matching/maintenance.py` | Finding and removing old uploads, orphaned indexes and old sessions |
-| `Dockerfile` | Container image with OCR |
+| `Dockerfile` | Container image (non-root, data in a volume) |
 | `profile_matching/pools.py` | One resume pool per folder: indexing, incremental sync, intake report |
 | `profile_matching/agent/` | `graph.py`, `state.py` (state, checkpointer), `nodes.py`, `routing.py`, `text.py` |
 | `profile_matching/screening.py` | The three screening rounds |
@@ -481,7 +479,7 @@ and `list`. The agent itself needs a chat model.
 | `profile_matching/schemas.py` | Pydantic models shared across the agent |
 | `profile_matching/prompts.py` | All prompt templates |
 | `profile_matching/services.py`, `candidates.py`, `config.py`, `markdown.py` | Shared dependencies, candidate lookup, settings, Markdown helpers |
-| `profile_matching/rag/` | Retrieval engine: `fs_tools` (read, list, search files), `ocr` (scanned PDFs and images), `resume_rag` (section chunking, metadata extraction, ChromaDB index), `job_matcher` (JD parsing, hybrid search, must-have checks), `skills_vocab` (skill aliases) |
+| `profile_matching/rag/` | Retrieval engine: `fs_tools` (read, list, search files), `resume_rag` (section chunking, metadata extraction, ChromaDB index), `job_matcher` (JD parsing, hybrid search, must-have checks), `skills_vocab` (skill aliases) |
 | `scripts/` | Sample resume generator, stability check (development tools, not part of the product) |
 | `tests/` | Offline pytest suite; `tests/fixtures/` holds 12 sample resumes and 3 sample JDs |
 
@@ -559,10 +557,9 @@ built with a hashing embedder. It covers:
 - **Blind screening isn't implemented.** Names and contact details reach the
   model during deep analysis.
 - **Synthetic data.** The semantic score range was calibrated on the generated
-  sample resumes; real resumes may need it re-tuned. OCR was tested on clean scans; low-quality
-  photos and handwriting will read worse.
-- **Unsupported formats.** Legacy `.doc`, `.rtf` and `.odt` aren't read; they
-  are reported so they can be converted. Subfolders of a resume folder aren't
+  sample resumes; real resumes may need it re-tuned.
+- **Unsupported formats.** Legacy `.doc`, `.rtf`, `.odt`, scanned PDFs and
+  images aren't read; they are reported so they can be converted. Subfolders of a resume folder aren't
   read either.
 - **Uploads accumulate** until `profile-match clean` removes them.
 - **Install size.** ChromaDB brings large dependencies (a Kubernetes client,

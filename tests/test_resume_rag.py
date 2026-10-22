@@ -43,7 +43,7 @@ def test_read_folder_returns_skipped_files_with_reasons(tmp_path):
     (tmp_path / "empty.txt").write_text("   ", encoding="utf-8")
     (tmp_path / "notes.xlsx").write_bytes(b"PK")
     resumes, skipped = resume_rag.read_folder(str(tmp_path))
-    assert [r["file_name"] for r in resumes] == ["good.txt"] and resumes[0]["ocr"] is False
+    assert [r["file_name"] for r in resumes] == ["good.txt"]
     reasons = {item["file"]: item["reason"] for item in skipped}
     assert set(reasons) == {"broken.pdf", "empty.txt", "notes.xlsx"}
     assert "Unsupported file type '.xlsx'" in reasons["notes.xlsx"]

@@ -88,11 +88,18 @@ def test_read_directory(tmp_path):
 
 
 def test_read_unsupported_extension(tmp_path):
-    path = tmp_path / "image.png"
-    path.write_bytes(b"\x89PNG")
+    path = tmp_path / "sheet.xlsx"
+    path.write_bytes(b"binary")
     result = fs_tools.read_file(str(path))
     assert result["success"] is False
     assert "unsupported" in result["error"].lower()
+
+
+def test_images_are_not_read(tmp_path):
+    path = tmp_path / "resume.jpg"
+    path.write_bytes(b"\xff\xd8\xff")
+    result = fs_tools.read_file(str(path))
+    assert result["success"] is False and "ask the candidate for a PDF or DOCX" in result["error"]
 
 
 def test_read_corrupt_pdf(tmp_path):

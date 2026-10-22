@@ -92,8 +92,7 @@ _INLINE_HEADER_RE = re.compile(r"^\s*([A-Za-z][A-Za-z &/]{1,40}?)\s*:\s*(\S.*)$"
 
 
 def file_stamp(path: str) -> str:
-    """Size and modification time: unchanged files are recognised without reading them,
-    which matters for scanned resumes that take seconds of OCR each."""
+    """Size and modification time: unchanged files are recognised without reading them."""
     stat = os.stat(path)
     return f"{stat.st_size}:{stat.st_mtime_ns}"
 
@@ -101,18 +100,19 @@ def file_stamp(path: str) -> str:
 def read_entry(entry: dict) -> tuple[dict | None, dict | None]:
     """Read one ``fs_tools.list_files`` entry: ``(resume, None)`` or ``(None, skipped)``.
 
-    A resume is ``{"path", "file_name", "content", "ocr", "stamp"}`` (``ocr``
-    when the text came from OCR); a skipped file is ``{"file", "reason"}``.
+    A resume is ``{"path", "file_name", "content", "stamp"}``; a skipped file
+    is ``{"file", "reason"}``. Scanned PDFs are skipped: what little text they
+    have (a scanner app's watermark) is not the resume.
     """
     result = fs_tools.read_file(entry["path"])
     if not result["success"]:
         skipped = {"file": entry["name"], "reason": result["error"]}
-    elif not result["content"].strip():
+    elif not result["content"].strip() or result["metadata"].get("scanned"):
         skipped = {"file": entry["name"], "reason": result.get("warning", "no extractable text")}
     else:
         return {
             "path": result["filepath"], "file_name": entry["name"], "content": result["content"],
-            "ocr": result["metadata"].get("ocr", False), "stamp": file_stamp(result["filepath"]),
+            "stamp": file_stamp(result["filepath"]),
         }, None
     logger.debug("Skipping %s: %s", skipped["file"], skipped["reason"])  # callers report it
     return None, skipped
@@ -848,12 +848,12 @@ class ResumeRAG:
         Resumes previously indexed from this directory whose files are gone
         (or no longer readable) are removed from the index.
 
-        Returns ``{"indexed", "unchanged", "removed", "ocr"}`` (lists of resume
-        paths; ``ocr`` lists files read with OCR in this run), ``"skipped"``
+        Returns ``{"indexed", "unchanged", "removed"}`` (lists of resume
+        paths), ``"skipped"``
         (``{"file", "reason"}`` per unusable file) and ``"chunks"`` (number of
         chunks written).
         """
-        summary = {"indexed": [], "unchanged": [], "removed": [], "chunks": 0, "skipped": [], "ocr": []}
+        summary = {"indexed": [], "unchanged": [], "removed": [], "chunks": 0, "skipped": []}
         seen = set()
         for entry in fs_tools.list_files(directory):
             path = str(Path(entry["path"]).resolve())
@@ -867,8 +867,6 @@ class ResumeRAG:
                 summary["skipped"].append(skipped)
                 continue
             seen.add(resume["path"])
-            if resume["ocr"]:
-                summary["ocr"].append(resume["path"])
             content_hash = _content_hash(resume["content"])
             if stored and stored.get("content_hash") == content_hash:
                 self._set_stamp(resume["path"], resume["stamp"])

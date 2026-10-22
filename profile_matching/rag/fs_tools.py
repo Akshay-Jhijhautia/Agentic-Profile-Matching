@@ -17,13 +17,16 @@ from docx import Document
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
-from . import ocr
-
 TEXT_EXTENSIONS = {".txt", ".md"}
-SUPPORTED_READ_EXTENSIONS = {".pdf", ".docx"} | TEXT_EXTENSIONS | ocr.IMAGE_EXTENSIONS
-# A PDF with less text than this per page is treated as scanned and read with OCR.
+SUPPORTED_READ_EXTENSIONS = {".pdf", ".docx"} | TEXT_EXTENSIONS
+# A PDF with less text than this per page has no real text layer: it is a scan.
 MIN_PDF_CHARS_PER_PAGE = 40
-UNSUPPORTED_HINTS = {".doc": "Legacy Word .doc is not supported; save it as .docx or PDF"}
+SCANNED_PDF = "No text layer: this looks like a scanned PDF. Ask the candidate for a text PDF or DOCX"
+_IMAGE_HINT = "Image files are not read; ask the candidate for a PDF or DOCX resume"
+UNSUPPORTED_HINTS = {
+    ".doc": "Legacy Word .doc is not supported; save it as .docx or PDF",
+    **dict.fromkeys((".png", ".jpg", ".jpeg"), _IMAGE_HINT),
+}
 BINARY_WRITE_EXTENSIONS = {".pdf", ".docx", ".doc"}
 CONTEXT_CHARS = 80
 
@@ -72,10 +75,10 @@ def _extract_text(path: Path) -> str:
 
 
 def read_file(filepath: str) -> dict:
-    """Read a resume file (PDF, DOCX, TXT, MD, or a PNG/JPG image) and extract its text.
+    """Read a resume file (PDF, DOCX, TXT or MD) and extract its text.
 
-    Scanned PDFs (little or no text layer) and images are read with OCR when
-    it is installed (``ocr.available()``); ``metadata["ocr"]`` is then True.
+    A PDF with almost no text per page is a scan: it is returned with
+    ``metadata["scanned"] = True`` and a ``warning``, since its text cannot be read.
 
     Returns ``{"success": True, "filepath", "content", "metadata"}`` on success,
     or ``{"success": False, "filepath", "error"}`` on failure.
@@ -95,19 +98,13 @@ def read_file(filepath: str) -> dict:
         supported = ", ".join(sorted(SUPPORTED_READ_EXTENSIONS))
         hint = UNSUPPORTED_HINTS.get(ext, f"Unsupported file type '{ext or '(none)'}'. Supported: {supported}")
         return _error(str(path), hint)
-    if ext in ocr.IMAGE_EXTENSIONS and not ocr.available():
-        return _error(str(path), f"Image resumes need OCR support; {ocr.INSTALL_HINT}")
 
-    page_count, used_ocr = None, False
+    page_count = None
     try:
         if ext == ".pdf":
             content, page_count = _extract_pdf(path)
-            if len(content) < MIN_PDF_CHARS_PER_PAGE * max(page_count, 1) and ocr.available():
-                content, used_ocr = ocr.pdf_text(path) or content, True
         elif ext == ".docx":
             content = _extract_docx(path)
-        elif ext in ocr.IMAGE_EXTENSIONS:
-            content, used_ocr = ocr.image_text(path), True
         else:
             content = _extract_text(path)
     except PermissionError as exc:
@@ -127,16 +124,13 @@ def read_file(filepath: str) -> dict:
     }
     if page_count is not None:
         metadata["page_count"] = page_count
-    if used_ocr:
-        metadata["ocr"] = True
 
     result = {"success": True, "filepath": str(path), "content": content, "metadata": metadata}
-    if not content.strip():
-        scanned = ext == ".pdf" and not used_ocr and not ocr.available()
-        result["warning"] = (
-            f"No text layer: this looks like a scanned PDF; {ocr.INSTALL_HINT}" if scanned
-            else "No text could be extracted. The file may be empty or contain no readable text."
-        )
+    if page_count is not None and len(content.strip()) < MIN_PDF_CHARS_PER_PAGE * max(page_count, 1):
+        metadata["scanned"] = True
+        result["warning"] = SCANNED_PDF
+    elif not content.strip():
+        result["warning"] = "No text could be extracted. The file may be empty or contain no readable text."
     return result
 
 

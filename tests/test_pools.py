@@ -8,13 +8,12 @@ from profile_matching import pools, screening
 from profile_matching.candidates import trim_resume
 from profile_matching.config import Settings
 from profile_matching.pools import pool_name, resolve_folder
-from profile_matching.rag import fs_tools, ocr
+from fpdf import FPDF
+
+from profile_matching.rag import fs_tools
 from profile_matching.schemas import Requirements
 from profile_matching.services import Services
 from tests.paths import RESUMES_DIR
-from tests.scans import write_scanned_image, write_scanned_pdf
-
-needs_ocr = pytest.mark.skipif(not ocr.available(), reason="OCR extras not installed")
 
 ROLE = Requirements.model_validate({
     "role_title": "Engineer", "must_have": [], "nice_to_have": ["Python"],
@@ -28,6 +27,18 @@ def _folder(root, name: str, files: list[str]):
     for file in files:
         shutil.copy(RESUMES_DIR / file, folder)
     return folder
+
+
+def write_scanned_pdf(path: Path, watermark: str = "", pages: int = 1) -> Path:
+    """A PDF like a scan: no text layer, apart from an optional scanner-app watermark."""
+    pdf = FPDF()
+    pdf.set_font("Helvetica", size=8)
+    for _ in range(pages):
+        pdf.add_page()
+        if watermark:
+            pdf.cell(text=watermark)
+    pdf.output(str(path))
+    return path
 
 
 @pytest.fixture
@@ -86,14 +97,13 @@ def test_pools_keep_folders_apart(offline, tmp_path):
     assert len(keys) == 2
 
 
-def test_intake_report_explains_every_skipped_file(offline, tmp_path, monkeypatch):
-    monkeypatch.setattr(ocr, "available", lambda: False)
+def test_intake_report_explains_every_skipped_file(offline, tmp_path):
     folder = _folder(tmp_path, "applicants", ["resume_alex_lee.txt"])
     (folder / "old.doc").write_bytes(b"binary")
     (folder / "sheet.xlsx").write_bytes(b"binary")
     (folder / "empty.txt").write_text("   ")
     write_scanned_pdf(folder / "scan.pdf")
-    write_scanned_image(folder / "photo.png")
+    (folder / "photo.png").write_bytes(b"\x89PNG")
 
     report = offline.use_folder(folder)
     reasons = {item["file"]: item["reason"] for item in report.skipped}
@@ -101,8 +111,8 @@ def test_intake_report_explains_every_skipped_file(offline, tmp_path, monkeypatc
     assert "save it as .docx or PDF" in reasons["old.doc"]
     assert "Unsupported file type '.xlsx'" in reasons["sheet.xlsx"]
     assert "No text could be extracted" in reasons["empty.txt"]
-    assert "scanned PDF" in reasons["scan.pdf"] and "pip install" in reasons["scan.pdf"]
-    assert "need OCR support" in reasons["photo.png"]
+    assert reasons["scan.pdf"] == fs_tools.SCANNED_PDF
+    assert "Image files are not read" in reasons["photo.png"]
     summary = report.summary()
     assert summary.startswith("Resumes in ") and "1 ready" in summary and "Skipped 5 file(s):" in summary
 
@@ -124,26 +134,21 @@ def test_services_without_a_folder_explain_what_to_do():
 # --- scanned resumes ------------------------------------------------------------------------------------
 
 
-@needs_ocr
-def test_scanned_pdfs_and_images_are_read_with_ocr(offline, tmp_path):
-    folder = tmp_path / "scans"
-    folder.mkdir()
-    write_scanned_pdf(folder / "resume_jordan_rivera.pdf")
-    result = fs_tools.read_file(str(folder / "resume_jordan_rivera.pdf"))
-    assert result["metadata"]["ocr"] is True
-    assert "Frontend engineer with 5 years of experience" in result["content"]
-    image = write_scanned_image(tmp_path / "photo.jpg")
-    assert "Jordan Rivera" in fs_tools.read_file(str(image))["content"]
+def test_scanned_pdfs_are_skipped_with_a_request_for_a_text_file(offline, tmp_path):
+    folder = _folder(tmp_path, "applicants", ["resume_john_doe.pdf"])
+    # A scanner app's watermark is some text, but far too little to be a resume.
+    write_scanned_pdf(folder / "maria_scan.pdf", watermark="Scanned with CamScanner", pages=2)
+    result = fs_tools.read_file(str(folder / "maria_scan.pdf"))
+    assert result["success"] and result["metadata"]["scanned"] and result["warning"] == fs_tools.SCANNED_PDF
 
     report = offline.use_folder(folder)
-    assert report.ready == 1 and len(report.ocr) == 1 and "Read 1 scanned file(s) with OCR" in report.summary()
-    (profile,) = offline.candidates.all()
-    assert profile.name == "Jordan Rivera" and "React" in profile.metadata["skills"]
+    assert report.ready == 1 and report.skipped == [{"file": "maria_scan.pdf", "reason": fs_tools.SCANNED_PDF}]
+    assert "Ask the candidate for a text PDF or DOCX" in report.summary()
 
 
-def test_pdfs_with_a_text_layer_skip_ocr():
+def test_pdfs_with_a_text_layer_are_not_scans():
     result = fs_tools.read_file(str(RESUMES_DIR / "resume_john_doe.pdf"))
-    assert "ocr" not in result["metadata"] and "John Doe" in result["content"]
+    assert "scanned" not in result["metadata"] and "warning" not in result and "John Doe" in result["content"]
 
 
 # --- trimming long resumes ------------------------------------------------------------------------------
@@ -188,15 +193,6 @@ def test_unchanged_files_are_not_read_again(offline, tmp_path, monkeypatch):
     offline.use_folder(folder)
     assert reads == []
 
-
-@needs_ocr
-def test_scanned_files_are_read_with_ocr_only_once(offline, tmp_path):
-    folder = tmp_path / "scans"
-    folder.mkdir()
-    write_scanned_pdf(folder / "resume_jordan_rivera.pdf")
-    assert len(offline.use_folder(folder).ocr) == 1
-    again = offline.use_folder(folder)
-    assert again.ocr == [] and again.unchanged == 1 and "OCR" not in again.summary()
 
 
 # --- uploads ------------------------------------------------------------------------------------------
