@@ -6,7 +6,7 @@
 - the screening results (``candidates``: every resume scored and ranked) and
   the ``shortlist`` with each candidate's reasoning, plus the previous
   shortlist so changes in ranking can be explained;
-- the latest ``report``.
+- the latest ``report`` and the routing decision for the latest message.
 """
 
 from __future__ import annotations
@@ -37,6 +37,7 @@ class AgentState(TypedDict, total=False):
     shortlist: list[CandidateMatch]
     previous_shortlist: list[CandidateMatch]
     report: str
+    intent: str  # the latest routing decision (see ``routing.ROUTES``)
 
 
 # Our types stored in checkpoints. LangGraph only restores allow-listed types

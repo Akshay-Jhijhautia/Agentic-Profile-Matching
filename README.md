@@ -31,8 +31,9 @@ python main.py index resumes --embedder hashing # offline index (keyword-overlap
 python main.py stats | list                     # inspect the index
 python main.py match --jd-file job_descriptions/frontend_react.txt   # non-agent ranking
 
-# The matching agent (one-shot screening of the whole index)
-python matching_agent.py --jd-file job_descriptions/frontend_react.txt
+# The matching agent
+python matching_agent.py                       # interactive chat (also: python main.py chat)
+python matching_agent.py --jd-file job_descriptions/frontend_react.txt   # one-shot screening
 python main.py screen "Find me candidates with React and 3+ years experience" --out reports/react.md
 ```
 
@@ -51,7 +52,8 @@ python main.py screen "Find me candidates with React and 3+ years experience" --
 | `profile_matching/analysis.py` | Head-to-head comparison and interview questions (facts + LLM reasoning) |
 | `profile_matching/tools/` | The agent's tools, built per `Services` by factories (`make_tools`) |
 | `matching_agent.py` | The LangGraph agent: graph wiring (`build_graph`) and one-shot CLI |
-| `profile_matching/agent/` | Agent state (`AgentState`, checkpointer) and graph nodes |
+| `profile_matching/agent/` | Agent state (`AgentState`, checkpointer), graph nodes and intent routing |
+| `profile_matching/cli.py` | Interactive terminal chat (rich) driving the human feedback loop |
 | `profile_matching/screening.py` | Screening rounds: score every resume, rank, shortlist |
 | `profile_matching/reports.py` | Markdown shortlist report and chat summary |
 | `main.py` | Single CLI entry point |
@@ -88,9 +90,41 @@ like a full job description.
 
 ## The matching agent
 
+`build_graph(services, conversational=...)` builds two variants of the graph.
+One-shot screening (`python matching_agent.py --jd-file ...`):
+
 ```
 START → parse_jd → extract_requirements → search_resumes → rank_candidates → generate_report → END
 ```
+
+The conversational graph (`python matching_agent.py`) adds the human feedback
+loop and a tool-using assistant:
+
+```
+START → route_intent ─┬─ new_search → parse_jd → … → generate_report → human_feedback
+                      ├─ ask → assistant ⇄ tools → human_feedback
+                      └─ end → END
+human_feedback (waits for the user) → route_intent
+```
+
+`human_feedback` pauses the graph with LangGraph's `interrupt()`; the chat
+resumes it with the user's next message (`Command(resume=...)`), and the
+in-memory checkpointer keeps the whole conversation per thread. `route_intent`
+classifies each message: a new role or JD starts a new search, anything about
+the current candidates goes to the assistant, and "bye"/"exit" ends the chat.
+The assistant sees the current role and shortlist in its system prompt and
+answers with the agent tools below, for example:
+
+- "Find me candidates with React and 3+ years experience": new search.
+- "Compare the top 3 matches side by side": `compare_candidates` on the
+  top 3 ids, answered as a Markdown table plus a verdict.
+- "Why did John rank higher than Jane?": a comparison that names the score
+  components and must-have checks that differ.
+
+Chat commands: `/report` (show the latest report), `/reset` (new
+conversation), `/help`, `/exit`. If a turn fails (for example the API is
+unreachable), the error is recorded as the assistant's reply, any unanswered
+tool calls are closed, and the chat carries on.
 
 | Node | What it does |
 | --- | --- |

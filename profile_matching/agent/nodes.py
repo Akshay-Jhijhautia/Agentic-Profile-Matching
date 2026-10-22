@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, trim_messages
+from langchain_core.tools import BaseTool
+from langgraph.types import interrupt
 
-from .. import reports, screening
+from .. import llm, prompts, reports, screening
 from ..requirements import extract_requirements, load_job_description
 from ..services import Services
 from .state import AgentState
+from .text import last_ai_text, last_human_text
 
-
-def last_human_text(state: AgentState) -> str:
-    for message in reversed(state.get("messages", [])):
-        if isinstance(message, HumanMessage):
-            return message.text
-    return ""
+# Messages of history the assistant sees, cut at a user message so tool calls
+# and their results stay together.
+ASSISTANT_HISTORY = 40
 
 
 class PipelineNodes:
@@ -54,3 +54,29 @@ class PipelineNodes:
             "report": reports.shortlist_report(*parts),
             "messages": [AIMessage(reports.shortlist_summary(*parts))],
         }
+
+
+class ConversationNodes:
+    """The human feedback loop and the tool-using assistant."""
+
+    def __init__(self, services: Services, tools: list[BaseTool]):
+        self.services = services
+        self.tools = tools
+
+    @staticmethod
+    def human_feedback(state: AgentState) -> dict:
+        """Pause the graph until the user replies (resumed with ``Command(resume=text)``)."""
+        reply = interrupt({"last_message": last_ai_text(state)})
+        return {"messages": [HumanMessage(reply)]}
+
+    def assistant(self, state: AgentState) -> dict:
+        """Answer the user, calling tools as needed (loops with the ``tools`` node)."""
+        context = reports.conversation_context(
+            state.get("requirements"), state.get("candidates", []), state.get("shortlist", [])
+        )
+        history = trim_messages(
+            state["messages"], max_tokens=ASSISTANT_HISTORY, token_counter=len, start_on="human"
+        )
+        model = llm.with_tools(self.tools, model=self.services.model)
+        reply = model.invoke([SystemMessage(prompts.ASSISTANT.format(context=context)), *history])
+        return {"messages": [reply]}

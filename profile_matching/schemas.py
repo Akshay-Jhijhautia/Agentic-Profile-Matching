@@ -241,3 +241,15 @@ class CandidateMatch(BaseModel):
             reasoning=result["reasoning"],
             excerpts=result["relevant_excerpts"],
         )
+
+
+# --- conversation routing (LLM output) ---------------------------------------------------------
+
+Intent = Literal["new_search", "ask", "end"]
+
+
+class IntentDecision(BaseModel):
+    intent: Intent = Field(
+        description="new_search: screen for a new role or criteria; ask: anything about the "
+        "current candidates, role or files; end: the user is finished."
+    )

@@ -52,7 +52,8 @@ def shortlist_report(
 ) -> str:
     """The full shortlist report: requirements, ranking table, reasoning, near misses."""
     passing = _passing(candidates)
-    lines = [f"# Shortlist: {requirements.role_title}", "", *requirements_lines(requirements), ""]
+    lines = [f"# Shortlist: {requirements.role_title}", ""]
+    lines += [f"- {line}" for line in requirements_lines(requirements)] + [""]
     lines.append(
         f"Screened {len(candidates)} resumes: {passing} meet every must-have, "
         f"{len(candidates) - passing} were knocked out."
@@ -103,3 +104,17 @@ def shortlist_summary(
         f"{head} The closest is {closest.name} ({closest.match_score}), who fails "
         f"{_join(closest.failed_requirements)}. Consider relaxing that requirement."
     )
+
+
+def conversation_context(
+    requirements: Requirements | None, candidates: list[CandidateMatch], shortlist: list[CandidateMatch]
+) -> str:
+    """The current search, as text for the assistant's system prompt."""
+    if requirements is None:
+        return "No role is set yet. The user can describe one to start a search."
+    lines = [f"Current role: {requirements.role_title}", *requirements_lines(requirements)]
+    lines.append(f"Screened {len(candidates)} resumes; {_passing(candidates)} pass every must-have.")
+    if shortlist:
+        lines.append("Shortlist (rank. name (id): score, must-haves):")
+        lines += [f"{m.rank}. {m.name} ({m.id}): {m.match_score}, {_must_have_cell(m)}" for m in shortlist]
+    return "\n".join(lines)

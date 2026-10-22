@@ -67,7 +67,7 @@ def test_pipeline_reports_and_summarises(run):
     state = run(PYTHON_ROLE, shortlist_size=3)
     report = state["report"]
     assert report.startswith("# Shortlist: Python Backend Engineer")
-    assert "**Must have:** Python" in report and "**Nice to have:** Django" in report
+    assert "- **Must have:** Python\n- **Nice to have:** Django" in report
     for match in state["shortlist"]:
         assert f"{match.name} (`{match.id}`)" in report and match.reasoning in report
 
