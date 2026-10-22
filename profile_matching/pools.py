@@ -147,7 +147,7 @@ class ResumePool:
         # is reported by ``Services.check_ready``), an existing one the embedder that built it.
         rag = resume_rag.ResumeRAG(
             settings.db_dir, embedder=embedder, llm_client=resume_rag.make_llm_client(),
-            collection_name=pool_name(path),
+            collection_name=pool_name(path), collection_metadata={"folder": str(path)},
         )
         return cls(path, rag)
 

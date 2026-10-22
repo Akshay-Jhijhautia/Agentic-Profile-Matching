@@ -170,6 +170,7 @@ class ConversationNodes:
                       else "\n\nDescribe the role or give a job description to screen them.")
         return {
             "load_paths": None, "load_error": None, "resume_folder": report.folder,
+            "pool_folder": str(self.services.pool.folder),
             "upload_folder": str(uploaded_to) if uploaded_to else state.get("upload_folder"),
             "candidates": [], "shortlist": [], "previous_candidates": [], "previous_shortlist": [],
             "ranking_diff": None, "messages": [AIMessage(reply)],

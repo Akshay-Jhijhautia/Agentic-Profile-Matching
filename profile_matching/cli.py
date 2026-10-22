@@ -10,7 +10,6 @@ Commands: /help, /report, /reset, /exit
 from __future__ import annotations
 
 import json
-import uuid
 from collections.abc import Callable
 
 from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
@@ -20,11 +19,15 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
+from .agent.text import last_ai_text
 from .pools import IntakeReport
 from .rag import resume_rag
+from .sessions import config_for, new_session_id
 
 # Graph steps allowed per user message (a tool loop is two steps per call).
 RECURSION_LIMIT = 60
+# What a new conversation inherits from the current one: the resumes being screened.
+CARRIED_OVER = ("resume_folder", "pool_folder", "upload_folder")
 # Tools whose result is a Markdown report shown to the user verbatim, under this key.
 DIRECT_REPORT_TOOLS = {"get_candidate_report": "report"}
 MAX_ARG_CHARS = 80
@@ -80,18 +83,33 @@ def close_dangling_tool_calls(messages: list[AnyMessage], error: str) -> list[To
 
 
 class ChatSession:
-    """One conversation thread with the agent graph."""
+    """One conversation (a saved session) with the agent graph."""
 
-    def __init__(self, graph: CompiledStateGraph, console: Console, initial_state: dict | None = None):
+    def __init__(
+        self,
+        graph: CompiledStateGraph,
+        console: Console,
+        initial_state: dict | None = None,
+        session_id: str | None = None,
+    ):
         self.graph = graph
         self.console = console
-        # Seeds the first turn of every conversation, e.g. the resumes loaded at startup.
+        # Seeds the first turn of a new conversation, e.g. the resumes loaded at startup.
         self.initial_state = initial_state or {}
-        self.reset()
+        self.reset(session_id)
 
-    def reset(self) -> None:
-        self.config = {"configurable": {"thread_id": uuid.uuid4().hex}, "recursion_limit": RECURSION_LIMIT}
-        self.report: str | None = None
+    @property
+    def values(self) -> dict:
+        return self.graph.get_state(self.config).values
+
+    def reset(self, session_id: str | None = None) -> None:
+        """Continue session ``session_id``, or start a new one that keeps the loaded resumes."""
+        if getattr(self, "config", None):
+            current = self.values
+            self.initial_state = {key: current[key] for key in CARRIED_OVER if current.get(key)} or self.initial_state
+        self.session_id = session_id or new_session_id()
+        self.config = {**config_for(self.session_id), "recursion_limit": RECURSION_LIMIT}
+        self.report: str | None = self.values.get("report")
         self.finished = False
 
     def send(self, text: str) -> None:
@@ -212,7 +230,10 @@ COMMANDS: dict[str, Callable[[ChatSession], object]] = {
     "/quit": lambda session: STOP,
     "/help": lambda session: session.console.print(Markdown(HELP)),
     "/report": ChatSession.show_report,
-    "/reset": lambda session: (session.reset(), session.console.print("Started a new conversation.")),
+    "/reset": lambda session: (
+        session.reset(),
+        session.console.print(f"Started a new conversation (session {session.session_id}); loaded resumes stay loaded."),
+    ),
 }
 
 
@@ -222,20 +243,28 @@ def run(
     console: Console | None = None,
     report: IntakeReport | None = None,
     initial_state: dict | None = None,
+    session_id: str | None = None,
 ) -> int:
-    """Chat until the user exits; returns the process exit code."""
+    """Chat until the user exits; returns the process exit code. ``session_id`` resumes
+    a saved session."""
     console = console or Console()
-    session = ChatSession(graph, console, initial_state)
+    session = ChatSession(graph, console, initial_state, session_id)
     examples = "\n".join(f"  • {example}" for example in EXAMPLES)
     loaded = (
         f"Screening {report.ready} resumes from {report.folder}." if report
         else "No resumes loaded yet: use /resumes <folder> or /add <files> (drag files into the terminal)."
     )
     console.print(Panel(
-        f"{loaded}\n\nDescribe a role, paste a job description or give a JD file path. For example:\n"
+        f"Session {session.session_id}. {loaded}\n\n"
+        "Describe a role, paste a job description or give a JD file path. For example:\n"
         f"{examples}\n\nCommands: /resumes <folder> /add <files> /help /report /reset /exit",
         title=f"Matching agent ({model_name})", border_style="cyan",
     ))
+    if session_id and session.values:
+        requirements = session.values.get("requirements")
+        role = requirements.role_title if requirements else "no role yet"
+        console.print(f"[dim]Resumed: {role}. Last reply:[/dim]")
+        console.print(Markdown(last_ai_text(session.values) or "(none)"))
     while True:
         try:
             text = console.input("\n[bold cyan]you>[/bold cyan] ").strip()

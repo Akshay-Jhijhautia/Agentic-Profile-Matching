@@ -22,27 +22,90 @@ you> Write 3 interview questions for the top candidate
 | **Interactive features**: natural-language queries, refinement with re-ranking and explanations | `profile_matching/cli.py`, `agent/routing.py`, `changes.py` |
 | **Advanced capabilities**: multi-round screening, explainability | `screening.py`, `guardrails.py`, `explainability.py`, `reports.py` |
 
+## Installation
+
+Requires Python 3.11+ and an OpenAI API key.
+
+```bash
+pip install "profile-match[ocr] @ git+https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching.git"
+export OPENAI_API_KEY=sk-...        # or put it in ./.env or ~/.profile-match/.env
+```
+
+The `[ocr]` extra reads scanned PDFs and image resumes (about 180 MB more);
+leave it out if all your resumes have a text layer. To work on the code:
+
+```bash
+git clone --depth 1 https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching.git
+cd Agentic-Profile-Matching
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt     # the package in editable mode, with OCR and dev tools
+```
+
+Or run it in Docker (see [Docker](#docker)).
+
 ## Quick start
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env                 # put your OPENAI_API_KEY in .env
-
 # Chat: describe the role, then load resumes (or the other way round)
-python main.py chat
+profile-match chat
 you> /resumes ~/Downloads/backend-applicants          # a folder: 5 or 500 resumes
 you> /add ~/Downloads/jane.pdf ~/Downloads/raj.docx   # or individual files (drag them in)
 
 # One-shot screening: the job description first, the resumes last
-python main.py screen --jd-file job.pdf --resumes ~/Downloads/backend-applicants
-python main.py screen "Senior React developer, 3+ years" --resumes jane.pdf raj.docx
+profile-match screen --jd-file job.pdf --resumes ~/Downloads/backend-applicants
+profile-match screen "Senior React developer, 3+ years" --resumes jane.pdf raj.docx
+
+# Pick up a conversation later
+profile-match sessions
+profile-match chat --session 20261022-1640-a3f2
 ```
 
 Resumes can be PDF, DOCX, TXT, MD, scanned PDFs or PNG/JPG images. Every
-screening saves `reports/<role>-<timestamp>/summary.md` plus one detailed
-report per shortlisted candidate. Chat commands: `/resumes <folder>`,
-`/add <files>`, `/report`, `/reset`, `/help`, `/exit`.
+screening saves `reports/<role>-<timestamp>/summary.md` (in the current
+folder) plus one detailed report per shortlisted candidate. Chat commands:
+`/resumes <folder>`, `/add <files>`, `/report`, `/reset`, `/help`, `/exit`.
+From a source checkout, `python main.py ...` runs the same commands.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `profile-match chat [--resumes PATH ...] [--session ID]` | Chat with the agent; resume a saved session with `--session` |
+| `profile-match screen "request" \| --jd-file JD --resumes PATH ...` | One-shot screening; prints the report and saves all reports |
+| `profile-match index FOLDER [--embedder openai\|hashing]` | Index or refresh a folder without screening |
+| `profile-match list FOLDER` | The candidates indexed from a folder |
+| `profile-match sessions [--delete ID]` | Saved chat sessions, newest first: id, date, role, resumes |
+| `profile-match clean [--older-than DAYS] [--yes]` | Old upload batches and sessions (default 30 days), and indexes of deleted folders; lists them, deletes with `--yes` |
+| `profile-match --version` | The installed version |
+
+### Local data
+
+Everything the tool keeps lives in one folder, `~/.profile-match`
+(`PROFILE_MATCH_HOME`):
+
+| Path | Contents |
+| --- | --- |
+| `index/` | One ChromaDB index per resume folder or upload batch |
+| `uploads/` | Copies of resumes given as files, one batch per chat or file set |
+| `sessions.sqlite` | Saved chat sessions (LangGraph checkpoints) |
+| `.env` | Optional settings, e.g. `OPENAI_API_KEY` |
+
+Every chat is saved as it goes. `profile-match chat --session <id>` restores
+it, with the role, results, history and resumes (reloaded from their folder).
+
+## Docker
+
+```bash
+docker build -t profile-match .
+docker run --rm -it -e OPENAI_API_KEY \
+    -v ~/.profile-match:/data -v "$PWD":/work \
+    profile-match chat --resumes ./applicants
+```
+
+The image includes OCR, with its models downloaded at build time, and runs as
+a non-root user. `/data` keeps indexes, uploads and sessions between runs;
+`/work` is your folder of resumes and job descriptions, where reports are
+written.
 
 ## Your resumes
 
@@ -84,8 +147,8 @@ before loading any, it notes the requirements and asks for resumes.
   lower-priority sections are cut.
 
 ```bash
-python main.py index ~/Downloads/backend-applicants    # index or refresh a folder without screening
-python main.py list ~/Downloads/backend-applicants     # the candidates indexed from it
+profile-match index ~/Downloads/backend-applicants    # index or refresh a folder without screening
+profile-match list ~/Downloads/backend-applicants     # the candidates indexed from it
 ```
 
 ## Architecture
@@ -122,7 +185,7 @@ graph TD
     human_feedback --> route_intent
 ```
 
-The one-shot graph (`python main.py screen`) is the same pipeline from
+The one-shot graph (`profile-match screen`) is the same pipeline from
 `parse_jd` to `generate_report`, ending there. Both come from
 `build_graph(services, conversational=...)`. A test keeps this diagram in sync
 with the compiled graph.
@@ -339,26 +402,32 @@ you> Write 3 interview questions for the top candidate
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Resume and query embeddings |
 | `OPENAI_TEMPERATURE` | provider default | Only for models that accept one |
 | `OPENAI_TIMEOUT` / `OPENAI_MAX_RETRIES` | `60` / `2` | Request limits |
-| `UPLOADS_DIR` | `~/.profile-match/uploads` | Where resumes given as files are copied, one batch per chat or file set |
+| `PROFILE_MATCH_HOME` | `~/.profile-match` | Local data: indexes, uploads, sessions, `.env` |
+| `CHROMA_DB_DIR` / `UPLOADS_DIR` / `SESSIONS_DB` | under `PROFILE_MATCH_HOME` | Override one location |
 | `EMBEDDER` | `openai` | Embeddings for new folder indexes: `openai`, or `hashing` (offline, keyword overlap only) |
-| `CHROMA_DB_DIR` | `chroma_db` | Where the folder indexes are stored |
 | `REPORTS_DIR` | `reports` | Where reports are saved; the only directory the agent may write to |
 | `SHORTLIST_SIZE` | `10` | Candidates kept after round 1 |
 | `SCREENING_ROUNDS` | `3` | 1: retrieval only; 2: + deep analysis; 3: + hire / no-hire |
 | `SAVE_REPORTS` | `true` | Save reports after every screening |
 
-No API key? `python main.py index ~/applicants --embedder hashing` builds an
-offline index (also `EMBEDDER=hashing`) for trying `index` and `list`. The
-agent itself needs a chat model.
+Settings come from the environment, then `./.env`, then
+`~/.profile-match/.env`. No API key? `profile-match index <folder> --embedder
+hashing` builds an offline index (also `EMBEDDER=hashing`) for trying `index`
+and `list`. The agent itself needs a chat model.
 
 ## Project layout
 
 | Path | Purpose |
 | --- | --- |
-| `matching_agent.py` | The LangGraph graph (`build_graph`), one-shot screening and chat entry point |
-| `main.py` | Single CLI: `chat`, `screen`, `index`, `list` |
+| `pyproject.toml` | Package metadata, dependencies (`ocr` and `dev` extras) and the `profile-match` command |
+| `profile_matching/app.py` | The `profile-match` command line |
+| `profile_matching/agent/graph.py` | The LangGraph graph (`build_graph`, `screen`) |
+| `matching_agent.py`, `main.py` | Entry points for a source checkout (re-export the graph; run the CLI) |
+| `profile_matching/sessions.py` | Saved chat sessions in SQLite |
+| `profile_matching/maintenance.py` | Finding and removing old uploads, orphaned indexes and old sessions |
+| `Dockerfile` | Container image with OCR |
 | `profile_matching/pools.py` | One resume pool per folder: indexing, incremental sync, intake report |
-| `profile_matching/agent/` | `state.py` (state, checkpointer), `nodes.py`, `routing.py`, `text.py` |
+| `profile_matching/agent/` | `graph.py`, `state.py` (state, checkpointer), `nodes.py`, `routing.py`, `text.py` |
 | `profile_matching/screening.py` | The three screening rounds |
 | `profile_matching/guardrails.py` | Review items, evidence grounding, verdict bounds, rubric, decision rule, injection checks |
 | `profile_matching/requirements.py` | Requirement extraction with rule floor and knockout policy |
@@ -392,7 +461,7 @@ The synthetic resumes cover:
 ```bash
 python -m scripts.generate_sample_resumes /tmp/sample_resumes             # 100 resumes
 python -m scripts.generate_sample_resumes /tmp/more --count 250 --seed 7
-python main.py chat --resumes /tmp/sample_resumes
+profile-match chat --resumes /tmp/sample_resumes
 ```
 
 The same seed always produces the same resumes. The measurements and the
@@ -456,5 +525,7 @@ built with a hashing embedder. It covers:
 - **Unsupported formats.** Legacy `.doc`, `.rtf` and `.odt` aren't read; they
   are reported so they can be converted. Subfolders of a resume folder aren't
   read either.
-- **Uploads accumulate.** Upload batches under `UPLOADS_DIR` and their indexes
-  are kept until deleted by hand.
+- **Uploads accumulate** until `profile-match clean` removes them.
+- **Install size.** ChromaDB brings large dependencies (a Kubernetes client,
+  ONNX Runtime, gRPC): the base install is about 500 MB. A lighter local vector
+  store would cut most of it.

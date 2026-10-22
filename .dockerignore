@@ -1,0 +1,13 @@
+.git
+.venv
+.env
+.pytest_cache
+**/__pycache__
+*.egg-info
+build
+dist
+chroma_db
+reports
+tests
+scripts
+LIMITATIONS.local.md

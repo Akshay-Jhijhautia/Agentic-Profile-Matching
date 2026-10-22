@@ -802,10 +802,12 @@ class ResumeRAG:
         llm_client=None,
         collection_name: str = COLLECTION_NAME,
         reset: bool = False,
+        collection_metadata: dict | None = None,
     ):
         self.persist_dir = persist_dir
         self.llm_client = llm_client
         self._embedder = embedder
+        self._collection_metadata = collection_metadata or {}
         self._client = chromadb.PersistentClient(
             path=persist_dir, settings=Settings(anonymized_telemetry=False)
         )
@@ -823,7 +825,7 @@ class ResumeRAG:
             embedder_name = self._embedder.name if self._embedder else default_embedder_name()
             return self._client.create_collection(
                 name,
-                metadata={"hnsw:space": "cosine", "embedder": embedder_name},
+                metadata={"hnsw:space": "cosine", "embedder": embedder_name, **self._collection_metadata},
                 embedding_function=None,
             )
         stored = (collection.metadata or {}).get("embedder")

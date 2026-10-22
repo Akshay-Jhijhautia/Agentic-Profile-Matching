@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "profile-match"
+dynamic = ["version"]
+description = "AI recruiting agent for the terminal: screens resumes against a job description in three rounds and explains every score."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Akshay Jhijhautia" }]
+keywords = ["resume-screening", "recruitment", "llm-agent", "langgraph", "rag", "explainable-ai", "cli"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Office/Business",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    # Retrieval engine: file reading, ChromaDB index, hybrid search
+    "openai>=1.40",
+    "chromadb>=1.5",
+    "rank-bm25>=0.2.2",
+    "pypdf>=5.0",
+    "python-docx>=1.1",
+    "python-dotenv>=1.0",
+    "pydantic>=2.7",
+    # Agent: LangGraph graph, saved sessions, LLM access, terminal chat
+    "langgraph>=1.2,<2",
+    "langgraph-checkpoint-sqlite>=3.1,<4",
+    "langchain-core>=1.6,<2",
+    "langchain-openai>=1.7,<2",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+# Scanned PDFs and image resumes (about 230 MB installed)
+ocr = ["rapidocr>=3.10,<4", "onnxruntime>=1.20", "pypdfium2>=4.30"]
+# Tests and development tools (sample resume generator)
+dev = ["pytest>=8.0", "pyflakes>=3.2", "fpdf2>=2.7", "pillow>=10.1"]
+
+[project.scripts]
+profile-match = "profile_matching.app:main"
+
+[project.urls]
+Repository = "https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching"
+
+[tool.setuptools.dynamic]
+version = { attr = "profile_matching.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["profile_matching*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

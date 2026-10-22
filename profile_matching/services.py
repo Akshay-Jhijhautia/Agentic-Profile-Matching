@@ -25,6 +25,12 @@ from .pools import IntakeReport, ResumePool
 from .rag import job_matcher, resume_rag
 
 
+MISSING_KEY = (
+    "OPENAI_API_KEY is not set. Export it, or put OPENAI_API_KEY=... in a .env file "
+    "in this folder or in ~/.profile-match/.env."
+)
+
+
 @dataclass
 class Services:
     pool: ResumePool | None = None
@@ -75,14 +81,14 @@ class Services:
         """Raise ``ValueError`` with a fix when the API key is missing or, if required, when
         no readable resumes are loaded."""
         if self.model is None and not os.getenv("OPENAI_API_KEY"):
-            raise ValueError("OPENAI_API_KEY is not set. Add it to .env (see .env.example).")
+            raise ValueError(MISSING_KEY)
         if self.pool is None and not require_resumes:
             return
         pool = self._active()
         if pool.rag.collection.count() == 0:
             raise ValueError(f"No readable resumes in {resume_rag.display_path(str(pool.folder))}.")
         if resume_rag.missing_api_key(pool.rag.embedder_name):
-            raise ValueError("OPENAI_API_KEY is not set. Add it to .env (see .env.example).")
+            raise ValueError(MISSING_KEY)
 
     @classmethod
     def from_settings(cls, settings: Settings | None = None) -> Services:

@@ -213,7 +213,7 @@ def test_repl_commands_and_conversation(chat, monkeypatch):
     assert "Matching agent (gpt-test)" in text
     assert "/reset" in text and "Start a new conversation" in text  # help table
     assert text.count("No report yet") == 2  # before the search and after /reset
-    assert "Shortlist report" in text and "Started a new conversation." in text
+    assert "Shortlist report" in text and "Started a new conversation (session " in text
     assert text.rstrip().endswith("Goodbye!")
 
 

@@ -57,6 +57,7 @@ class AgentState(TypedDict, total=False):
     report_dir: str | None  # where the latest reports were saved
     intent: str  # the latest routing decision (see ``routing.ROUTES``)
     resume_folder: str  # what is being screened: a folder, or "your uploaded resumes"
+    pool_folder: str  # the absolute folder behind it, to reload the resumes when a session resumes
     upload_folder: str | None  # this conversation's uploads batch, added to by every upload
     # Set by the router for this turn only: resumes to load and a JD file to read.
     load_paths: list[str] | None
@@ -73,6 +74,11 @@ STATE_MODELS = (
 )
 
 
+def serializer() -> JsonPlusSerializer:
+    """The checkpoint serializer, allowed to restore the agent's state types."""
+    return JsonPlusSerializer(allowed_msgpack_modules=STATE_MODELS)
+
+
 def make_checkpointer() -> InMemorySaver:
-    """An in-memory checkpointer that can restore the agent's state types."""
-    return InMemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=STATE_MODELS))
+    """An in-memory checkpointer (see ``sessions`` for the one saved to disk)."""
+    return InMemorySaver(serde=serializer())

@@ -8,7 +8,7 @@ from tests.fakes import FakeChatModel
 
 ENV_VARS = ("OPENAI_MODEL", "OPENAI_TEMPERATURE", "OPENAI_TIMEOUT", "OPENAI_MAX_RETRIES", "CHROMA_DB_DIR",
             "REPORTS_DIR", "SHORTLIST_SIZE", "SCREENING_ROUNDS", "SAVE_REPORTS", "OPENAI_RESPONSES_API",
-            "UPLOADS_DIR", "EMBEDDER")
+            "UPLOADS_DIR", "EMBEDDER", "PROFILE_MATCH_HOME", "SESSIONS_DB")
 
 
 @pytest.fixture
@@ -49,6 +49,16 @@ def test_settings_from_env(clean_env):
 def test_settings_are_validated(field, value):
     with pytest.raises(ValueError, match=field):
         Settings(**{field: value})
+
+
+def test_data_home_holds_index_uploads_and_sessions(clean_env, tmp_path):
+    clean_env.setenv("PROFILE_MATCH_HOME", str(tmp_path / "pm"))
+    settings = Settings.from_env()
+    assert (settings.db_dir, settings.uploads_dir, settings.sessions_db) == (
+        str(tmp_path / "pm" / "index"), str(tmp_path / "pm" / "uploads"), str(tmp_path / "pm" / "sessions.sqlite"),
+    )
+    clean_env.setenv("CHROMA_DB_DIR", "/elsewhere/index")  # individual settings still win
+    assert Settings.from_env().db_dir == "/elsewhere/index"
 
 
 def test_empty_temperature_means_provider_default(clean_env):

@@ -15,7 +15,7 @@ from pathlib import Path
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
 # Page render resolution: readable for 10-11pt resume text, faster than 300 dpi.
 RENDER_DPI = 200
-INSTALL_HINT = "install OCR support with: pip install rapidocr onnxruntime pypdfium2"
+INSTALL_HINT = 'install OCR support with: pip install "profile-match[ocr]"'
 
 
 @lru_cache(maxsize=1)

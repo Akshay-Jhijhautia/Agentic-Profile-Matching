@@ -60,7 +60,7 @@ def test_screen_needs_a_job_description_and_chat_refuses_one(offline_env, folder
 
 def test_help_and_unknown_command(capsys):
     assert main.main(["--help"]) == 0
-    assert "python main.py screen" in capsys.readouterr().out
+    assert "profile-match screen" in capsys.readouterr().out
     assert main.main([]) == 1
     assert main.main(["deploy"]) == 2
     assert "Unknown command" in capsys.readouterr().err
