@@ -12,11 +12,14 @@ from pydantic import BaseModel
 from profile_matching.schemas import (
     Assessment,
     CandidateImprovements,
-    HiringDecision,
-    HiringDecisions,
+    DecisionRationale,
+    DeepReview,
+    HiringRationales,
     Improvement,
     ImprovementSuggestions,
     RequirementEvidence,
+    RequirementReview,
+    RiskFlag,
 )
 
 
@@ -63,20 +66,39 @@ class FakeChatModel:
 
 
 def fake_assessment(deep_score: int = 80) -> Assessment:
+    """A stored round-2 result, for tests that need a given deep score."""
     return Assessment(
-        requirement_evidence=[RequirementEvidence(requirement="Python", verdict="strong", evidence="5 yrs")],
+        requirement_evidence=[RequirementEvidence(requirement="Python", kind="must", verdict="strong",
+                                                  evidence="5 yrs")],
         strengths=["Shipped production APIs"], gaps=["No GraphQL"], risk_flags=[],
         deep_score=deep_score, summary="Solid backend engineer.",
     )
 
 
-def fake_committee(messages: list) -> HiringDecisions:
-    """Hires every candidate with a final score of 75 or more, as the real committee might."""
+def fake_review(verdict: str = "strong", risk_flags: list[RiskFlag] | None = None) -> Callable[[list], DeepReview]:
+    """A model answering ``verdict`` for every requirement it is asked about, quoting the
+    resume's first line (which is really in the resume, so the evidence check accepts it)."""
+
+    def answer(messages: list) -> DeepReview:
+        payload = json.loads(messages[1].content)
+        quote = payload["resume_text"].strip().splitlines()[0]
+        return DeepReview(
+            requirements=[
+                RequirementReview(requirement_id=item["id"], verdict=verdict,
+                                  evidence_quote="" if verdict == "missing" else quote)
+                for item in payload["requirements"]
+            ],
+            strengths=["Shipped production APIs"], gaps=["No GraphQL"], risk_flags=risk_flags or [],
+            summary="Solid backend engineer.",
+        )
+
+    return answer
+
+
+def fake_rationales(messages: list) -> HiringRationales:
     candidates = json.loads(messages[1].content)["candidates"]
-    return HiringDecisions(decisions=[
-        HiringDecision(candidate_id=c["id"], decision="hire" if c["final_score"] >= 75 else "no_hire",
-                       confidence="medium", rationale=f"Final score {c['final_score']}.")
-        for c in candidates
+    return HiringRationales(rationales=[
+        DecisionRationale(candidate_id=c["id"], rationale=f"Final score {c['final_score']}.") for c in candidates
     ])
 
 
@@ -92,4 +114,6 @@ def fake_advisor(messages: list) -> ImprovementSuggestions:
 
 
 # Answers for every LLM call the screening rounds make; merge into a FakeChatModel's responses.
-SCREENING_RESPONSES = {Assessment: fake_assessment(), HiringDecisions: fake_committee, ImprovementSuggestions: fake_advisor}
+SCREENING_RESPONSES = {
+    DeepReview: fake_review(), HiringRationales: fake_rationales, ImprovementSuggestions: fake_advisor,
+}

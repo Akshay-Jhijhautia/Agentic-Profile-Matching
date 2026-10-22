@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from profile_matching import analysis
+from profile_matching import analysis, screening
 from profile_matching.requirements import load_job_description
 from profile_matching.schemas import (
     CandidateNote,
@@ -14,7 +14,7 @@ from profile_matching.schemas import (
 )
 from profile_matching.tools import make_tools
 from profile_matching.tools._base import MAX_TOOL_TEXT_CHARS, safe_tool
-from tests.fakes import FakeChatModel
+from tests.fakes import FakeChatModel, fake_assessment
 from tests.paths import JD_DIR, RESUMES_DIR
 
 
@@ -238,3 +238,19 @@ def test_interview_questions_validate_count(tools, count):
         {"candidate_id": "John Doe", "count": count, "state": {}}
     )
     assert result["success"] is False
+
+
+def test_compare_uses_the_shortlisted_record_and_its_final_score(tools, services):
+    profiles = services.candidates.resolve_many(["John Doe", "Maria Garcia"])
+    john = next(m for m in screening.evaluate(services, DJANGO_ROLE, profiles) if m.id == "john_doe")
+    # John's deep analysis is poor, so his final score falls well below his retrieval score.
+    shortlisted = john.model_copy(update={"assessment": fake_assessment(10)})
+    services.model = FakeChatModel({ComparisonVerdict: _verdict(["john_doe"], [])})
+    result = tools["compare_candidates"].invoke({
+        "candidate_ids": ["John Doe", "Maria Garcia"],
+        "state": {"requirements": DJANGO_ROLE, "shortlist": [shortlisted]},
+    })
+    facts = {c["id"]: c for c in result["candidates"]}
+    assert facts["john_doe"]["deep_score"] == 10
+    assert facts["john_doe"]["final_score"] == shortlisted.final_score < john.match_score
+    assert facts["maria_garcia"]["deep_score"] is None  # not shortlisted: screened in round 1

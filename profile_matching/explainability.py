@@ -11,10 +11,19 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from .markdown import join, or_dash, table
+from . import guardrails
+from .markdown import join, or_dash, sentences, table
 from .rag import fs_tools
 from .schemas import COMPONENT_LABELS, DEEP_WEIGHT, CandidateMatch, Requirements
 
+RUBRIC_NOTE = (
+    "The deep-analysis score is computed from the verdicts below by a fixed rubric: must-haves "
+    f"{guardrails.MUST_SHARE:.0%} and nice-to-haves {1 - guardrails.MUST_SHARE:.0%}, each scored "
+    + ", ".join(f"{verdict} {value:g}" for verdict, value in guardrails.VERDICT_VALUE.items())
+    + "; minus risk penalties ("
+    + ", ".join(f"{severity} {points}" for severity, points in guardrails.RISK_PENALTY.items())
+    + f", at most {guardrails.MAX_RISK_PENALTY})."
+)
 CANDIDATE_DIR = "candidates"
 SUMMARY_FILE = "summary.md"
 
@@ -42,7 +51,7 @@ def recommendation_line(match: CandidateMatch) -> str | None:
     if rec is None:
         return None
     verdict = "Hire" if rec.decision == "hire" else "No hire"
-    return f"**Recommendation:** {verdict} ({rec.confidence} confidence). {rec.rationale}"
+    return f"**Recommendation:** {verdict} ({rec.confidence} confidence). {rec.rationale} *(Rule: {rec.rule}.)*"
 
 
 # --- strengths and gaps ----------------------------------------------------------------------------
@@ -91,7 +100,7 @@ def summary_section(match: CandidateMatch, requirements: Requirements) -> list[s
     if match.assessment is not None:
         lines += [f"**Deep analysis ({match.assessment.deep_score}):** {match.assessment.summary}", ""]
     strengths, gaps = strengths_and_gaps(match, requirements)
-    lines += [f"**Strengths:** {join(strengths[:3])}", "", f"**Gaps:** {join(gaps[:3])}", ""]
+    lines += [f"**Strengths:** {sentences(strengths[:3])}", "", f"**Gaps:** {sentences(gaps[:3])}", ""]
     if match.improvements:
         lines += ["**To become a clear hire:**", ""]
         lines += [f"- {i.suggestion} (verify: {i.how_to_verify})" for i in match.improvements]
@@ -117,18 +126,24 @@ def candidate_report(match: CandidateMatch, requirements: Requirements) -> str:
         lines += [match.assessment.summary, ""]
 
     lines += ["## How the score adds up", "", *table(["Component", "Value", "Weight", "Points"], score_rows(match))]
+    if match.assessment is not None:
+        lines += ["", RUBRIC_NOTE]
     if match.must_have_checks:
         rows = [[c.requirement, c.status.replace("_", " "), c.detail] for c in match.must_have_checks]
         lines += ["", "## Must-have checks", "", *table(["Requirement", "Status", "Detail"], rows)]
     if match.assessment is not None:
-        rows = [[e.requirement, e.verdict, e.evidence or "–"] for e in match.assessment.requirement_evidence]
-        lines += ["", "## Evidence per requirement", "", *table(["Requirement", "Verdict", "Evidence"], rows)]
+        rows = [
+            [e.requirement, f"{e.kind}-have", e.verdict, e.evidence or "–", e.note or "–"]
+            for e in match.assessment.requirement_evidence
+        ]
+        header = ["Requirement", "Kind", "Verdict", "Evidence", "Guardrail note"]
+        lines += ["", "## Evidence per requirement", "", *table(header, rows)]
 
     strengths, gaps = strengths_and_gaps(match, requirements)
     for title, items in (("Strengths", strengths), ("Gaps", gaps)):
         lines += ["", f"## {title}", "", *([f"- {item}" for item in items] or ["- none found"])]
     if match.assessment is not None and match.assessment.risk_flags:
-        lines += ["", "## Risk flags", "", *[f"- {flag}" for flag in match.assessment.risk_flags]]
+        lines += ["", "## Risk flags", "", *[f"- {flag.label}" for flag in match.assessment.risk_flags]]
     if match.improvements:
         rows = [[i.gap, i.suggestion, i.how_to_verify] for i in match.improvements]
         lines += ["", "## Improvement suggestions", "", *table(["Gap", "Suggestion", "How to verify"], rows)]

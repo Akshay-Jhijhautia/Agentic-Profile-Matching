@@ -83,7 +83,9 @@ def reasons_for(old: CandidateMatch | None, new: CandidateMatch | None) -> list[
         if newly:
             reasons.append(f"now fails {'; '.join(newly)}")
     if old.final_score != new.final_score:
-        component = _component_reason(old, new)
+        # A score with the deep analysis and one without are not like for like: no component.
+        comparable = (old.assessment is None) == (new.assessment is None)
+        component = _component_reason(old, new) if comparable else None
         score = f"score {old.final_score} → {new.final_score}"
         reasons.append(f"{score} ({component})" if component else score)
     if new.unverified and not old.unverified:

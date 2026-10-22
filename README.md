@@ -1,275 +1,383 @@
 # Agentic Profile Matching
 
-Milestone 3 of the resume assistant: a LangGraph agent that screens resumes
-against a job description, explains its rankings and refines them through
-conversation. It builds on the Milestone 1 file tools and the Milestone 2
-RAG matcher, which live in `profile_matching/rag/`.
+A LangGraph agent that screens resumes against a job description, explains every
+ranking it makes, and refines the search through conversation. It is
+Milestone 3 of the resume assistant and builds on the Milestone 1 file tools
+and the Milestone 2 RAG matcher (`profile_matching/rag/`).
 
-## Setup
+```
+you> Find me candidates with React and 3+ years experience
+Screened 100 resumes; 10 pass every must-have. Deep analysis of 10 in parallel. Final round: hire / no-hire.
+you> Compare the top 3 matches side by side
+you> Why did the top candidate rank higher than the second?
+you> Make TypeScript a must-have
+you> Write 3 interview questions for the top candidate
+```
+
+| Assignment part | Where it lives |
+| --- | --- |
+| **A. Agent architecture**: state, graph, tools | `matching_agent.py` (graph), `profile_matching/agent/` (state, nodes, routing), `profile_matching/tools/` |
+| **B. Interactive features**: natural-language queries, refinement with re-ranking and explanations | `profile_matching/cli.py`, `agent/routing.py`, `changes.py` |
+| **C. Advanced capabilities**: multi-round screening, explainability | `screening.py`, `guardrails.py`, `explainability.py`, `reports.py` |
+
+## Quick start
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env        # then put your OPENAI_API_KEY in .env
+cp .env.example .env                 # put your OPENAI_API_KEY in .env
+
+python main.py index resumes         # embed the 100 sample resumes into ChromaDB (once)
+python matching_agent.py             # chat with the agent (also: python main.py chat)
+python main.py screen --jd-file job_descriptions/frontend_react.txt   # one-shot screening
 ```
+
+Every screening saves `reports/<role>-<timestamp>/summary.md` plus one detailed
+report per shortlisted candidate. Chat commands: `/report`, `/reset`, `/help`, `/exit`.
+
+## Architecture
+
+```mermaid
+graph TD
+    __start__([START]) --> route_intent
+    route_intent -.->|new_search| parse_jd
+    route_intent -.->|refine| refine_requirements
+    route_intent -.->|ask| assistant
+    route_intent -.->|end| __end__([END])
+    parse_jd --> extract_requirements
+    extract_requirements --> search_resumes
+    refine_requirements --> search_resumes
+    search_resumes --> rank_candidates
+    rank_candidates -.->|"one Send per candidate"| assess_candidate
+    rank_candidates -.->|"nothing to assess"| finalize_ranking
+    assess_candidate --> finalize_ranking
+    finalize_ranking --> suggest_improvements
+    suggest_improvements -.->|after a refine| explain_changes
+    suggest_improvements -.->|otherwise| generate_report
+    explain_changes --> generate_report
+    generate_report --> human_feedback
+    assistant -.->|tool calls| tools
+    tools --> assistant
+    assistant -.->|answer| human_feedback
+    human_feedback --> route_intent
+```
+
+The one-shot graph (`python main.py screen`) is the same pipeline from
+`parse_jd` to `generate_report`, ending there. Both come from
+`build_graph(services, conversational=...)`. A test keeps this diagram in sync
+with the compiled graph.
+
+| Node | What it does |
+| --- | --- |
+| `route_intent` | Classifies each message: a new role (`new_search`), a change to the current requirements (`refine`), a question (`ask`) or goodbye (`end`). Exit words skip the model |
+| `parse_jd` | Reads the latest message: JD text, a short request or a JD file path |
+| `extract_requirements` | Must-have vs nice-to-have requirements ([details](#requirements)) |
+| `refine_requirements` | Applies "make Kubernetes a must-have" to the current requirements, as a new version |
+| `search_resumes` | **Round 1**: scores and checks every indexed resume |
+| `rank_candidates` | Keeps the best `SHORTLIST_SIZE` candidates who pass every must-have |
+| `assess_candidate` | **Round 2**, one per shortlisted candidate in parallel (`Send`): deep review of the full resume |
+| `finalize_ranking` | Re-ranks by final score, then **round 3**: hire / no-hire by rule, rationale by the model |
+| `suggest_improvements` | Borderline candidates: what would make them a clear hire |
+| `explain_changes` | After a refinement: what changed in the requirements and the ranking, and why |
+| `generate_report` | Shortlist report and chat summary; saves all reports |
+| `assistant` ⇄ `tools` | Tool-calling loop for questions, comparisons, explanations, interview questions |
+| `human_feedback` | Pauses the graph (`interrupt()`) until the user replies (`Command(resume=...)`) |
+
+### Agent state
+
+`AgentState` (`profile_matching/agent/state.py`) holds:
+
+- **conversation history**: `messages`;
+- **job understanding**: `job_description`, the current `requirements` and every version in `requirements_history`;
+- **candidates**: `candidates` (every resume, ranked), the `shortlist` (each candidate's scores, must-have checks, reasoning, deep assessment, recommendation and improvement suggestions), the previous screening for change explanations, `assessments` (round-2 cache), `ranking_diff` and the latest `report`.
+
+The in-memory checkpointer keeps one thread per conversation. It registers the
+state's Pydantic types with LangGraph's serializer, so checkpoints restore
+without deserialization warnings.
+
+## Requirements
+
+`extract_requirements` turns a job description or a short request into
+`Requirements`: must-have skills (optionally with minimum years), nice-to-have
+skills, minimum total experience and minimum degree. **Must-haves are knockout
+filters**, so the model's answer passes through deterministic checks:
+
+1. **Recall floor.** The Milestone 2 rule parser adds vocabulary skills the
+   model skipped (as nice-to-have only) and years it found for a must-have the
+   model left without them.
+2. **Knockout policy.** A must-have can only reject candidates when the text
+   demands it and the resume parser can check it:
+   - skills offered as alternatives ("PyTorch or TensorFlow") become nice-to-have;
+   - broad concepts outside the skills vocabulary ("Relational Databases") become nice-to-have;
+   - a degree is dropped unless a requirement line asks for it without "or equivalent" or "preferred".
+
+Skills are normalised through the shared vocabulary (`react.js` → `React`). A
+skill listed without dated experience is `unverified` (kept, flagged), unless the
+candidate's whole career is shorter than the years required.
+
+## Multi-round screening
+
+| Round | What happens | LLM calls |
+| --- | --- | --- |
+| **1. Initial screen** | Every resume (100) gets the Milestone 2 hybrid retrieval score (semantic 50% + BM25 keyword 20% + must-have skill coverage 30%) and the must-have checks. The best 10 passing candidates go on | none |
+| **2. Deep analysis** | The model reviews each shortlisted resume in parallel, giving a verdict per requirement with a verbatim quote. Code checks the verdicts and computes the **deep score**. Final score = **0.6 × deep + 0.4 × retrieval** | one per candidate, cached |
+| **3. Final decision** | A fixed rule decides hire / no-hire and its confidence. One call writes the rationales. Final scores 60–74 are **borderline** and get improvement suggestions | two for the cohort |
+
+A full three-round screen of 100 resumes takes about 40 seconds with
+`gpt-5.6-terra`, almost all of it the parallel deep reviews.
+`SCREENING_ROUNDS=1` or `2` stops earlier.
+
+## Guardrails
+
+The agent is designed so that **the model judges and code decides**. Results
+then depend as little as possible on which model is plugged in or on a given
+run (`profile_matching/guardrails.py`):
+
+| Guardrail | What it prevents |
+| --- | --- |
+| **Rubric scoring.** The model returns only categorical verdicts (strong / partial / missing). Code computes the deep score: must-haves 70%, nice-to-haves 30%; strong 1, partial 0.5, missing 0; minus risk penalties (low 2, medium 5, high 10, at most 20) | Free-form scores drifting between runs and models |
+| **Evidence grounding.** Every verdict cites a verbatim quote, and code checks it is in the resume. A quote that isn't downgrades the verdict | Credit for invented experience |
+| **Facts bound verdicts.** A must-have that round 1 *measured* as met (years, experience, degree) counts as strong; an unverified one counts as exactly partial; a listed skill can't be missing | The model contradicting what code measured |
+| **Decision rule.** Hire when final ≥ 75, no must-have missing and no high-severity risk. Confidence comes from the margin and evidence quality. The model only explains | Different hiring decisions for the same evidence |
+| **Stable search text.** The semantic query is rendered only from the structured requirements, never from model-written prose | Rewording reordering the shortlist |
+| **Prompt-injection defence.** Resume text is marked as untrusted data in every prompt, and code flags instruction-like text ("ignore previous instructions…") as a high-severity risk | A resume steering its own evaluation |
+| **Validated, retried output.** Every structured answer is validated against its schema and retried once with the error | Malformed answers breaking the pipeline |
+| **Readiness and recovery.** The CLI checks the index and API key up front. A failed turn is recorded and the conversation continues, with unanswered tool calls closed | A dead or inconsistent chat |
+
+Every adjustment is visible. The detailed report has a "guardrail note" next
+to any verdict code changed, and each recommendation shows the rule that
+produced it.
+
+**Measured effect** (`scripts/stability_check.py`, 3 identical runs, React request):
+
+| | before guardrails | gpt-5.6-terra | gpt-6-luna |
+| --- | --- | --- | --- |
+| Deep-score spread for one candidate across runs | up to 24 points | mean 6.5 | mean 2.1 |
+| Same top 10 across runs | – | 100% | 100% |
+| Same hire / no-hire decisions across runs | – | 100% | 100% |
+
+Across both models on the frontend JD, the ranking was identical (Kendall tau
+1.0) and 2 of 3 hire decisions matched. The candidate sitting at the threshold
+differed.
+
+```bash
+python -m scripts.stability_check "Find me candidates with React and 3+ years experience" --runs 3
+python -m scripts.stability_check job_descriptions/frontend_react.txt --runs 2 --models gpt-5.6-terra,gpt-6-luna
+```
+
+## Iterative refinement
+
+"Make Kubernetes a must-have", "5+ years of React instead", "drop the degree
+requirement" or "TypeScript is only nice to have" edit the current
+requirements and re-rank every resume. `explain_changes`
+(`profile_matching/changes.py`) then computes, deterministically:
+
+- **the requirement edits**, e.g. "React: 3+ yrs → 5+ yrs";
+- **every candidate who entered, left or moved**, with a reason, one of:
+  - a must-have they now fail or no longer fail;
+  - the score component whose weighted change moved them most ("deep analysis 79 → 89", "semantic fit 56% → 76%");
+  - when their own scores don't explain the move, the candidates knocked out above them or who overtook them.
+
+The report gains a "What changed" table, the chat reply opens with a short
+narrative of that diff (the model may only cite the computed reasons), and the
+assistant sees the changes, so "who dropped out and why?" is answered from them.
+
+## Explainability
+
+- **Shortlist report** (`summary.md`, shown in chat):
+  - requirements, then what changed (after a refinement);
+  - a table of final / retrieval / deep scores, must-have status and recommendations;
+  - per candidate: the decision with its rule and rationale, the deep-analysis summary, strengths, gaps, improvement suggestions (if borderline) and retrieval reasoning;
+  - the closest knocked-out candidates.
+- **Detailed match report** per candidate (`candidates/NN-<id>.md`, or ask "show me Maria's report"):
+  - how the score adds up: each component's value, weight and points;
+  - must-have checks;
+  - evidence per requirement, with any guardrail notes;
+  - strengths, gaps and risk flags with severity;
+  - improvement suggestions: the gap, what the candidate could do, how to verify it;
+  - resume excerpts.
+- **Change explanations** after every refinement (above).
+
+All reports are rendered by code from computed results, so they never disagree
+with the ranking. In chat, a candidate report is shown verbatim, and the
+assistant only adds a takeaway.
+
+## Agent tools
+
+`make_tools(services)` builds the tools. Each takes its description and
+argument docs from its docstring. Expected failures (unknown candidate, bad
+input, unreadable file) return `{"success": false, "error": ...}` so the model
+can recover.
+
+| Tool | Purpose |
+| --- | --- |
+| `read_file`, `list_files`, `search_in_file` | Milestone 1 file tools |
+| `write_file` | Save Markdown or text, only inside `REPORTS_DIR` |
+| `rag_search(query, k)` | Milestone 2 hybrid search for open questions |
+| `extract_requirements(jd)` | Must-have vs nice-to-have from JD text, a request or a JD file |
+| `compare_candidates(candidate_ids)` | 2–5 candidates head to head on their final scores, checks and decisions, with a verdict |
+| `generate_interview_questions(candidate_id, count)` | Questions aimed at the candidate's gaps, unverified claims and strengths |
+| `get_candidate_report(candidate_id)` | The detailed match report of a screened candidate |
+
+Candidates are referred to by id (resume file stem without `resume_`, e.g.
+`maria_garcia`), full name or a unique part of a name; an ambiguous name lists
+the matching ids. Tools that need the current role or shortlist read them from
+the graph state (`InjectedState`), invisible to the model.
+
+## Sample session
+
+From a live run with `gpt-5.6-terra` on the 100-resume index (abridged):
+
+```
+you> Find me candidates with React and 3+ years experience
+Starting a new search…
+Must have: React (3+ yrs)
+Screened 100 resumes; 10 pass every must-have.
+Deep analysis of anika_laurent: 100        (… 10 in parallel)
+Final round: 8 hire, 2 no hire.
+[Shortlist report]
+Screened 100 resumes for React Developer: 10 meet every must-have. Top matches: Anika Laurent (90),
+Ethan Khan (89), … Reports saved to reports/react-developer-20261022-151949.
+
+you> Compare the top 3 matches side by side
+→ compare_candidates(candidate_ids=["anika_laurent", "ethan_khan", "maria_garcia"])
+[side-by-side table: score, must-have status, key strengths, gaps / risks]
+Verdict: Advance Anika first: all three pass the must-have, but she has the most directly relevant
+frontend, accessibility and testing evidence…
+
+you> Make TypeScript a must-have
+Updated the requirements:
+Must have: React (3+ yrs), TypeScript
+Screened 100 resumes; 8 pass every must-have.
+Ranking changes: 0 new, 2 dropped, 6 up, 1 down
+With TypeScript now a must-have, Ethan Khan and Hassan Nguyen left the shortlist because their
+resumes do not show TypeScript…
+| Lucia Lim    | ▲ 8 → 3          | 83 → 89 | score 83 → 89 (semantic fit 61% → 74%) |
+| Ethan Khan   | ▼ left (now #12) | 89 → 60 | now fails no TypeScript on resume (needs TypeScript) |
+
+you> Write 3 interview questions for the top candidate
+→ generate_interview_questions(candidate_id="anika_laurent", count=3)
+ 1 React architecture: At Summit Learning, you owned the checkout flow using TypeScript and WCAG
+   practices. How did you structure the React components, manage form and async submission state…
+ 2 Redux and performance: You introduced Redux and reported a 19% Lighthouse improvement. What
+   problem required Redux, …
+ 3 TypeScript standards: While setting React standards and mentoring engineers, what TypeScript
+   conventions did you establish…
+```
+
+## Configuration
 
 | Variable | Default | Used for |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | — | Chat model and embeddings |
-| `OPENAI_MODEL` | `gpt-6-luna` | Requirement extraction, agent reasoning and the indexer's metadata fallback |
+| `OPENAI_MODEL` | `gpt-5.6-terra` | Every LLM step (extraction, deep review, rationales, assistant) and the indexer's metadata fallback |
+| `OPENAI_RESPONSES_API` | `true` | OpenAI's Responses API, required for tool calling with reasoning models |
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Resume and query embeddings |
-| `OPENAI_TEMPERATURE` | provider default | Chat temperature; only set it for models that accept one |
-| `OPENAI_TIMEOUT` / `OPENAI_MAX_RETRIES` | `60` / `2` | Chat request limits |
+| `OPENAI_TEMPERATURE` | provider default | Only for models that accept one |
+| `OPENAI_TIMEOUT` / `OPENAI_MAX_RETRIES` | `60` / `2` | Request limits |
 | `CHROMA_DB_DIR` | `chroma_db` | Vector index location |
-| `REPORTS_DIR` | `reports` | The only directory the agent may write to |
-| `SHORTLIST_SIZE` | `10` | Candidates kept after the initial screen |
-| `SCREENING_ROUNDS` | `3` | 1: retrieval only; 2: + deep analysis; 3: + hire/no-hire |
-| `SAVE_REPORTS` | `true` | Save the summary and per-candidate reports after every screening |
+| `REPORTS_DIR` | `reports` | Where reports are saved; the only directory the agent may write to |
+| `SHORTLIST_SIZE` | `10` | Candidates kept after round 1 |
+| `SCREENING_ROUNDS` | `3` | 1: retrieval only; 2: + deep analysis; 3: + hire / no-hire |
+| `SAVE_REPORTS` | `true` | Save reports after every screening |
 
-## Usage
-
-```bash
-python main.py index resumes                    # build or refresh the vector index
-python main.py index resumes --embedder hashing # offline index (keyword-overlap embeddings)
-python main.py stats | list                     # inspect the index
-python main.py match --jd-file job_descriptions/frontend_react.txt   # non-agent ranking
-
-# The matching agent
-python matching_agent.py                       # interactive chat (also: python main.py chat)
-python matching_agent.py --jd-file job_descriptions/frontend_react.txt   # one-shot screening
-python main.py screen "Find me candidates with React and 3+ years experience"
-# → reports/react-developer-<timestamp>/summary.md + candidates/NN-<id>.md
-```
+No API key? `python main.py index resumes --embedder hashing` builds an offline
+index for trying the retrieval commands (`index`, `list`, `match`). The agent
+itself needs a chat model.
 
 ## Project layout
 
 | Path | Purpose |
 | --- | --- |
-| `profile_matching/rag/` | Retrieval engine from Milestones 1–2: `fs_tools`, `resume_rag`, `job_matcher`, `skills_vocab` |
-| `profile_matching/config.py` | Settings read once from the environment |
-| `profile_matching/llm.py` | The single path to the chat model: `structured(schema, system, user)` |
-| `profile_matching/schemas.py` | Pydantic models shared by the LLM layer, tools and graph (`Requirements`, ...) |
-| `profile_matching/prompts.py` | All prompt templates |
-| `profile_matching/requirements.py` | `extract_requirements`: LLM extraction + rule floor + knockout policy |
-| `profile_matching/services.py` | `Services`: the index, matcher, candidate directory, settings and chat model shared by tools and graph |
-| `profile_matching/candidates.py` | `CandidateDirectory`: resolve candidates by id, name or part of a name |
-| `profile_matching/analysis.py` | Head-to-head comparison and interview questions (facts + LLM reasoning) |
-| `profile_matching/tools/` | The agent's tools, built per `Services` by factories (`make_tools`) |
-| `matching_agent.py` | The LangGraph agent: graph wiring (`build_graph`) and one-shot CLI |
-| `profile_matching/agent/` | Agent state (`AgentState`, checkpointer), graph nodes and intent routing |
-| `profile_matching/cli.py` | Interactive terminal chat (rich) driving the human feedback loop |
-| `profile_matching/screening.py` | The three screening rounds: initial screen, deep analysis, hire/no-hire |
-| `profile_matching/reports.py` | Shortlist report, "What changed", chat summary and assistant context |
-| `profile_matching/explainability.py` | Per-candidate explainability: score breakdown, strengths/gaps, detailed report, saving |
-| `profile_matching/markdown.py` | Small Markdown helpers (tables, escaping) |
+| `matching_agent.py` | The LangGraph graph (`build_graph`), one-shot screening and chat entry point |
+| `main.py` | Single CLI: `index`, `stats`, `list`, `match`, `screen`, `chat` |
+| `profile_matching/agent/` | `state.py` (state, checkpointer), `nodes.py`, `routing.py`, `text.py` |
+| `profile_matching/screening.py` | The three screening rounds |
+| `profile_matching/guardrails.py` | Review items, evidence grounding, verdict bounds, rubric, decision rule, injection checks |
+| `profile_matching/requirements.py` | Requirement extraction with rule floor and knockout policy |
 | `profile_matching/changes.py` | Requirement and ranking diffs with a reason for every move |
-| `main.py` | Single CLI entry point |
-| `resumes/` | Demo dataset: 100 resumes (12 hand-written + 88 synthetic) in PDF, DOCX and TXT |
-| `job_descriptions/` | Sample job descriptions |
-| `scripts/generate_sample_resumes.py` | Regenerates `resumes/` |
-| `scripts/synthetic_resumes.py` | Seeded, template-driven resume builder used by the generator |
-| `tests/` | Offline pytest suite; `tests/fixtures/resumes/` is a frozen copy of the 12 Milestone 2 samples so expected rankings stay stable as `resumes/` grows |
-
-## Requirements extraction
-
-`extract_requirements(text)` turns a job description or a short request
-("Find me candidates with React and 3+ years experience") into `Requirements`:
-must-have skills (optionally with minimum years), nice-to-have skills, minimum
-total experience, minimum degree and an ideal-candidate profile.
-
-Must-haves are **knockout filters**: a candidate without one is rejected. So
-the LLM's answer passes through two deterministic steps:
-
-1. **Recall floor.** The Milestone 2 rule parser adds vocabulary skills the
-   LLM skipped (as nice-to-have only) and years it found for a must-have the
-   LLM left without them.
-2. **Knockout policy.** Skills offered as alternatives ("PyTorch or
-   TensorFlow", "Oracle or PostgreSQL") and broad concepts the resume parser
-   cannot check ("Relational Databases", "Model Deployment") are demoted to
-   nice-to-have, and a degree is dropped unless a requirement line demands it
-   without "or equivalent", "preferred" and the like.
-
-Skills are normalised through the shared vocabulary (`react.js` → `React`),
-and durations or degrees listed as skills are discarded. Ranking reuses the
-Milestone 2 matcher through `JobMatcher.match_parsed(requirements.to_parsed())`.
-Its search text is built from the requirements, so a short request searches
-like a full job description.
-
-## The matching agent
-
-`build_graph(services, conversational=...)` builds two variants of the graph.
-One-shot screening (`python matching_agent.py --jd-file ...`):
-
-```
-START → parse_jd → extract_requirements → search_resumes → rank_candidates
-      → assess_candidate ×N (parallel) → finalize_ranking → suggest_improvements → generate_report → END
-```
-
-The conversational graph (`python matching_agent.py`) adds the human feedback
-loop and a tool-using assistant:
-
-```
-START → route_intent ─┬─ new_search → parse_jd → extract_requirements ─┐
-                      ├─ refine → refine_requirements ─────────────────┴→ search_resumes
-                      ├─ ask → assistant ⇄ tools → human_feedback
-                      └─ end → END
-search_resumes → rank_candidates → assess_candidate ×N → finalize_ranking
-               → suggest_improvements → [explain_changes, after a refine] → generate_report
-generate_report → human_feedback (waits for the user) → route_intent
-```
-
-`human_feedback` pauses the graph with LangGraph's `interrupt()`; the chat
-resumes it with the user's next message (`Command(resume=...)`), and the
-in-memory checkpointer keeps the whole conversation per thread. `route_intent`
-classifies each message: a new role or JD starts a new search, a change to the
-current requirements refines it, anything about the current candidates goes to
-the assistant, and "bye"/"exit" ends the chat.
-The assistant sees the current role and shortlist in its system prompt and
-answers with the agent tools below, for example:
-
-- "Find me candidates with React and 3+ years experience": new search.
-- "Compare the top 3 matches side by side": `compare_candidates` on the
-  top 3 ids, answered as a Markdown table plus a verdict.
-- "Why did John rank higher than Jane?": a comparison that names the score
-  components and must-have checks that differ.
-
-### Iterative refinement
-
-Messages such as "make Kubernetes a must-have", "5+ years of React instead",
-"drop the degree requirement" or "TypeScript is only nice to have" edit the
-current requirements (`refine_requirements`, a new version in
-`requirements_history`) and re-rank every resume. `explain_changes`
-(`profile_matching/changes.py`) then computes, deterministically:
-
-- the requirement edits ("React: 3+ yrs → 5+ yrs");
-- every candidate who entered, left or moved in the shortlist, with the reason:
-  a must-have they now fail or no longer fail, the score component whose
-  weighted change moved them most ("semantic fit 71% → 84%"), or, when
-  nothing about them changed, the candidates knocked out above them or who
-  overtook them.
-
-The report gains a "What changed" table, the chat reply opens with a short LLM
-narrative of that diff, and the assistant sees the changes in its context, so
-"who dropped out and why?" is answered from the computed reasons.
-
-Chat commands: `/report` (show the latest report), `/reset` (new
-conversation), `/help`, `/exit`. If a turn fails (for example the API is
-unreachable), the error is recorded as the assistant's reply, any unanswered
-tool calls are closed, and the chat carries on.
-
-| Node | What it does |
-| --- | --- |
-| `parse_jd` | Takes the latest user message: JD text, a short request or a JD file path |
-| `extract_requirements` | Must-have vs nice-to-have (see below); every version is kept in `requirements_history` |
-| `search_resumes` | Round 1: scores and checks **every** indexed resume (not a retrieval pool) |
-| `rank_candidates` | Candidates passing every must-have, best score first; keeps the top `SHORTLIST_SIZE` |
-| `assess_candidate` | Round 2, one per shortlisted candidate in parallel (`Send`): deep review of the full resume |
-| `finalize_ranking` | Re-ranks by final score, then round 3: hire/no-hire for the whole shortlist |
-| `suggest_improvements` | Borderline candidates (final 60–74): what would make them a clear hire |
-| `explain_changes` | After a refinement only: what changed and why (see below) |
-| `generate_report` | Shortlist report and chat summary; saves the summary and one detailed report per candidate (see Explainability) |
-
-The state (`profile_matching/agent/state.py`) holds the conversation
-(`messages`), the job understanding (`job_description`, `requirements`,
-`requirements_history`) and the results (`candidates` with every resume
-ranked, the `shortlist` with each candidate's reasoning, assessment and
-recommendation, the previous screening, the `assessments` cache and the
-`report`). `make_checkpointer()` registers the state's Pydantic types with
-LangGraph's serializer, so checkpoints restore without deserialization
-warnings.
-
-A skill listed without dated experience is `unverified` (kept, flagged), unless
-the candidate's whole career is shorter than the years required, in which case
-it is `not_met`.
-
-### Multi-round screening
-
-| Round | What happens | Cost |
-| --- | --- | --- |
-| 1. Initial screen | Every resume (e.g. 100) gets the hybrid retrieval score and must-have checks; the best `SHORTLIST_SIZE` (10) passing candidates go on | No LLM calls |
-| 2. Deep analysis | An LLM reviews each shortlisted candidate's full resume in parallel: evidence per requirement (strong / partial / missing), strengths, gaps, risk flags and a 0–100 deep score. The shortlist is re-ranked by **final score = 0.6 × deep + 0.4 × retrieval** | One call per candidate, cached |
-| 3. Final decision | One "hiring committee" call over the whole shortlist decides hire / no-hire with confidence and rationale, so decisions are calibrated against each other | One call |
-
-Final scores from 60 to 74 are flagged **borderline**. Round-2 assessments
-are cached in the state by candidate and hard requirements (not their
-wording), so repeating a search does not repeat the deep analysis. Ranking
-changes caused by round 2 are explained like any other ("deep analysis 79 →
-89"). `SCREENING_ROUNDS=1` or `2` stops earlier for faster, cheaper runs.
-A full three-round screen of 100 resumes takes about 35 seconds with
-`gpt-6-luna`, almost all of it the deep reviews.
-
-### Explainability
-
-Every screening explains itself at three levels, all rendered from computed
-results so they never disagree with the ranking:
-
-- **Shortlist report** (`summary.md`, shown in chat): requirements, what
-  changed (after a refinement), a table with final / retrieval / deep scores,
-  must-have status and the recommendation, then per candidate the committee's
-  rationale, the deep-analysis summary, top strengths and gaps, improvement
-  suggestions for borderline candidates, the retrieval reasoning and a resume
-  excerpt; finally the closest knocked-out candidates.
-- **Detailed match report** per candidate (`candidates/NN-<id>.md`, or ask
-  "show me Maria's report"):
-  - how the score adds up (each component's value, weight and points);
-  - must-have checks and the evidence per requirement (strong / partial / missing, quoted);
-  - strengths, gaps and risk flags;
-  - improvement suggestions: the gap, what the candidate could do, and how the
-    recruiter can verify it;
-  - retrieval reasoning with resume excerpts.
-
-  Candidates who were only screened in round 1 get strengths and gaps derived
-  from their must-have checks and skills.
-- **Change explanations** after a refinement (see above).
-
-Reports are saved to a new timestamped folder under `REPORTS_DIR` after every
-screening, so each refinement keeps its own record. In chat, the
-`get_candidate_report` tool's report is shown verbatim; the assistant only
-adds a short takeaway, so a computed report is never retold by the model.
-
-## Agent tools
-
-`make_tools(services)` builds every tool the agent can call. Each tool takes
-its description and argument docs from its docstring. Expected failures, such
-as an unknown candidate or an unreadable file, are returned to the model as
-`{"success": false, "error": ...}` so it can recover.
-
-| Tool | Purpose |
-| --- | --- |
-| `read_file`, `list_files`, `search_in_file` | Milestone 1 file tools (read anywhere) |
-| `write_file` | Save Markdown/text, only inside `REPORTS_DIR` |
-| `rag_search(query, k)` | Milestone 2 hybrid search for open questions |
-| `extract_requirements(jd)` | Must-have vs nice-to-have from JD text, a request or a JD file |
-| `compare_candidates(candidate_ids)` | 2–5 candidates head to head: scores, must-have checks, LLM verdict |
-| `generate_interview_questions(candidate_id, count)` | Questions aimed at the candidate's gaps, unverified claims and strengths |
-| `get_candidate_report(candidate_id)` | The detailed match report of a screened candidate |
-
-Candidates are referred to by id (the resume file stem without `resume_`, e.g.
-`maria_garcia`), full name or a unique part of a name. An ambiguous reference
-("Rafael") lists the matching ids instead of guessing. The comparison and
-interview tools read the current role from the agent's state, so the model
-never passes requirements around. Their deterministic facts (scores,
-must-have checks) are returned with the LLM's reasoning, so every claim can be
-traced back.
+| `profile_matching/explainability.py` | Per-candidate score breakdown, strengths and gaps, detailed report, saving |
+| `profile_matching/reports.py` | Shortlist report, chat summary, assistant context |
+| `profile_matching/analysis.py` | Comparison, interview questions and report lookup behind the tools |
+| `profile_matching/tools/` | Agent tools, built per `Services` by factories |
+| `profile_matching/cli.py` | Rich terminal chat driving the human feedback loop |
+| `profile_matching/llm.py` | The single path to the chat model: `structured(...)`, `with_tools(...)` |
+| `profile_matching/schemas.py` | Pydantic models shared across the agent |
+| `profile_matching/prompts.py` | All prompt templates |
+| `profile_matching/services.py`, `candidates.py`, `config.py`, `markdown.py` | Shared dependencies, candidate lookup, settings, Markdown helpers |
+| `profile_matching/rag/` | Milestones 1–2: `fs_tools`, `resume_rag`, `job_matcher`, `skills_vocab` |
+| `scripts/` | Resume dataset generator, stability check |
+| `resumes/`, `job_descriptions/` | 100 sample resumes (PDF, DOCX, TXT) and 3 sample JDs |
+| `tests/` | Offline pytest suite |
 
 ## Dataset
 
-`resumes/` holds 100 fictional resumes: the 12 hand-written Milestone 2 samples
-plus 88 synthetic ones from `scripts/synthetic_resumes.py`. Synthetic resumes
-are built from 11 role families (frontend, full-stack, Python/Java backend,
-data science, ML, data engineering, DevOps, iOS, Android, QA) at junior to
-lead seniority, with overlapping skills, varied header and date formats, and
-some edge cases (career changers, no degree, certifications). The same seed
-always produces the same resumes.
+`resumes/` holds 100 fictional resumes:
+- the 12 hand-written Milestone 2 samples;
+- 88 seeded synthetic ones from `scripts/synthetic_resumes.py`.
+
+The synthetic resumes cover:
+- **11 role families**: frontend, full-stack, Python and Java backend, data science, ML, data engineering, DevOps, iOS, Android and QA;
+- **seniority** from junior to lead, with overlapping skills;
+- **varied formats**: different header and date styles;
+- **edge cases**: career changers, missing degrees, certifications.
 
 ```bash
-python -m scripts.generate_sample_resumes                  # 100 resumes into resumes/
+python -m scripts.generate_sample_resumes                  # regenerate the 100
 python -m scripts.generate_sample_resumes out/ --count 250 --seed 7
 ```
 
-## Tests
+## Testing
 
 ```bash
 pytest -q
 ```
+
+The suite (over 400 tests) runs offline. A fake chat model answers structured
+calls and scripts tool-calling turns, and ChromaDB runs on a temporary index
+built with a hashing embedder. It covers:
+- the ported Milestone 2 engine;
+- requirement extraction and the knockout policy;
+- every guardrail;
+- the three rounds;
+- refinement diffs;
+- reports;
+- the tools;
+- full multi-turn conversations through the real graph, including interrupts, refinements and error recovery.
+
+## Design decisions
+
+- **The model judges, code decides.** Scores, knockouts, hire decisions and
+  reports are computed. The model reads resumes, gives categorical verdicts
+  with quotes and writes explanations. This is what makes results stable
+  across runs and auditable.
+- **Must-haves are knockouts, so they are policed.** A must-have can only reject
+  a candidate when the JD demands it outright and the parser can verify it.
+- **Round 1 covers the whole index.** Screening scores every resume rather than
+  a retrieval pool, so no qualifying candidate is missed. LLM cost is spent
+  only on the shortlist.
+- **One record per candidate.** `CandidateMatch` builds up through the rounds,
+  so ranking, change explanations, reports and the assistant all read the same
+  numbers.
+- **Dependencies are injected.** `Services` holds the index, matcher, settings
+  and model. Tools and nodes are built around it, so tests swap in fakes with
+  no globals.
+- **The human loop is in the graph.** The feedback loop is a LangGraph
+  `interrupt()`, so the conversation is checkpointed state rather than CLI glue.
+
+## Limitations
+
+- **One provider.** Only OpenAI is wired up (chat and embeddings), and
+  different models can still disagree on candidates near the hire threshold.
+  Next steps:
+  - a provider-agnostic chat layer;
+  - local embeddings;
+  - letting rules decide or recruiters confirm the extracted requirements;
+  - a reproducibility cache for LLM outputs.
+- **Conversations live in memory** and end with the process.
+- **Heuristic skill years.** A skill's years come from the dated roles that
+  mention it, so skills listed only in a Skills section are "unverified".
+- **Blind screening isn't implemented.** Names and contact details reach the
+  model during deep analysis.
+- **Synthetic data.** The 100 resumes are synthetic, and the semantic score
+  range was calibrated on them.

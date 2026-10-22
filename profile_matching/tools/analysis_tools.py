@@ -40,7 +40,7 @@ def make_analysis_tools(services: Services) -> list[BaseTool]:
             candidate_ids: Candidate ids or names, e.g. ["maria_garcia", "John Doe"].
         """
         role = analysis.as_requirements(state.get("requirements"))
-        return analysis.compare_candidates(services, candidate_ids, role)
+        return analysis.compare_candidates(services, candidate_ids, role, state.get("shortlist", []))
 
     @agent_tool
     def generate_interview_questions(
@@ -53,7 +53,9 @@ def make_analysis_tools(services: Services) -> list[BaseTool]:
             count: Number of questions (3-10).
         """
         role = analysis.as_requirements(state.get("requirements"))
-        return analysis.generate_interview_questions(services, candidate_id, role, count)
+        return analysis.generate_interview_questions(
+            services, candidate_id, role, count, state.get("shortlist", [])
+        )
 
     @agent_tool
     def get_candidate_report(candidate_id: str, state: Annotated[dict, InjectedState]) -> dict:

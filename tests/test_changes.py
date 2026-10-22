@@ -2,6 +2,7 @@ import pytest
 
 from profile_matching import changes, reports
 from profile_matching.schemas import CandidateMatch, Requirements, ScoreBreakdown
+from tests.fakes import fake_assessment
 
 
 def _role(**overrides) -> Requirements:
@@ -165,3 +166,11 @@ def test_a_move_against_the_own_score_also_names_the_others():
     new = [_match("bob", 1, 80), _match("ann", 9, 90, failed=["no Go on resume (needs Go)"])]
     (bob,) = changes.ranking_diff(_role(), _role(), old, new, old, new[:1]).of_kind("up")
     assert bob.reasons == ["score 85 → 80", "1 candidate(s) ranked above now fail a must-have"]
+
+
+def test_scores_with_and_without_deep_analysis_get_no_component_reason():
+    assessed = _match("ann", 1, 80).model_copy(update={"assessment": fake_assessment(98)})
+    round_one = _match("ann", 12, 60, failed=["no Go on resume (needs Go)"])
+    assert changes.reasons_for(assessed, round_one) == [
+        "now fails no Go on resume (needs Go)", f"score {assessed.final_score} → 60",
+    ]

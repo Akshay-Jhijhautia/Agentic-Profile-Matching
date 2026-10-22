@@ -525,7 +525,7 @@ def parse_must_have_spec(spec: str) -> dict:
     return {"type": "skill_years", "skill": skill, "min_years": years, "source": spec}
 
 
-def _requirement_label(req: dict) -> str:
+def requirement_label(req: dict) -> str:
     if req["type"] == "skill_years":
         return f"{req['min_years']:g}+ yrs {req['skill']}"
     if req["type"] == "total_years":
@@ -546,7 +546,7 @@ def check_must_haves(metadata: dict, must_haves: list[dict]) -> list[dict]:
     skill_years = {s.lower(): y for s, y in metadata["skill_years"].items()}
     checks = []
     for req in must_haves:
-        label = _requirement_label(req)
+        label = requirement_label(req)
         if req["type"] in {"skill", "skill_years"}:
             skill = req["skill"].lower()
             has = skill in skills or skill in skill_years

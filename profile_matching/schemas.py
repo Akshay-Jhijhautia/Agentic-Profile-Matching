@@ -67,9 +67,6 @@ class Requirements(BaseModel):
     min_degree: DegreeLevel | None = Field(
         description="Lowest acceptable degree when one is required, else null."
     )
-    ideal_profile: str = Field(
-        description="Two or three sentences describing the ideal candidate in resume language."
-    )
 
     @field_validator("nice_to_have")
     @classmethod
@@ -97,11 +94,12 @@ class Requirements(BaseModel):
     def query_text(self) -> str:
         """A JD-like rendering used for semantic and keyword search.
 
-        Built from the requirements rather than the user's words, so a short
-        request searches like a full job description and every refinement
-        changes the search as well as the filters.
+        Built only from the structured requirements, never from model-written
+        prose (not even the role title), so the same requirements always search
+        the same way whichever model extracted them, and a refinement changes
+        the search exactly as much as it changes the requirements.
         """
-        lines = [self.role_title, self.ideal_profile]
+        lines = []
         if self.must_have:
             lines.append("Must have: " + ", ".join(req.label for req in self.must_have))
         if self.nice_to_have:
@@ -191,53 +189,94 @@ class ScoreBreakdown(BaseModel):
     skill_coverage: float | None
 
 
-# --- rounds 2 and 3 (LLM output) --------------------------------------------------------------------
+# --- rounds 2 and 3 ---------------------------------------------------------------------------------
+#
+# The LLM only judges (``DeepReview``, ``HiringRationales``); code turns its judgements into
+# scores and decisions (``Assessment``, ``Recommendation``) under the rules in ``guardrails``.
+
+Verdict = Literal["strong", "partial", "missing"]
+Severity = Literal["low", "medium", "high"]
+
+
+class RequirementReview(BaseModel):
+    requirement_id: str = Field(description="The requirement's id from the input, e.g. 'M1' or 'N2'.")
+    verdict: Verdict = Field(
+        description="strong: clearly demonstrated; partial: present but thin or indirect; missing: not shown."
+    )
+    evidence_quote: str = Field(
+        description="A short verbatim quote from the resume supporting the verdict; empty when missing."
+    )
+
+
+class RiskFlag(BaseModel):
+    flag: str = Field(description="The concern, specific to this resume.")
+    severity: Severity = Field(
+        description="high: likely disqualifying (e.g. fabricated-looking claims); medium: needs "
+        "checking (gaps, contradictions); low: minor."
+    )
+
+    @property
+    def label(self) -> str:
+        return f"{self.flag} ({self.severity})"
+
+
+class DeepReview(BaseModel):
+    """Round 2, as the LLM returns it: categorical judgements only, no scores."""
+
+    requirements: list[RequirementReview] = Field(description="One entry per requirement id in the input.")
+    strengths: list[str]
+    gaps: list[str]
+    risk_flags: list[RiskFlag] = Field(
+        description="Short tenures, unexplained gaps, contradictions, claims without supporting experience."
+    )
+    summary: str = Field(description="Two sentences on overall fit.")
 
 
 class RequirementEvidence(BaseModel):
-    requirement: str = Field(description="The requirement as given, e.g. 'React (3+ yrs)' or 'GraphQL'.")
-    verdict: Literal["strong", "partial", "missing"]
-    evidence: str = Field(description="What the resume shows, quoted or paraphrased; empty when missing.")
+    """One requirement after the guardrails: the verdict that counts and why."""
+
+    requirement: str
+    kind: Literal["must", "nice"]
+    verdict: Verdict
+    evidence: str
+    note: str = ""  # set when a guardrail changed the model's verdict
 
 
 class Assessment(BaseModel):
-    """Round 2: a deep review of one full resume against the role."""
+    """Round 2 result: the review with verdicts checked by code and the rubric's deep score."""
 
-    requirement_evidence: list[RequirementEvidence] = Field(description="One entry per requirement.")
+    requirement_evidence: list[RequirementEvidence]
     strengths: list[str]
     gaps: list[str]
-    risk_flags: list[str] = Field(
-        description="Concerns such as short tenures, career gaps or claims without evidence."
-    )
-    deep_score: int = Field(description="0-100: 85+ exceptional, 70-84 solid, 55-69 borderline, <55 weak.")
-    summary: str = Field(description="Two sentences on overall fit.")
+    risk_flags: list[RiskFlag]
+    deep_score: int
+    summary: str
 
-    @field_validator("deep_score")
-    @classmethod
-    def _clamp(cls, value: int) -> int:
-        return max(0, min(100, value))
+    @property
+    def adjustments(self) -> list[str]:
+        """Every verdict a guardrail changed, with the reason."""
+        return [f"{e.requirement}: {e.note}" for e in self.requirement_evidence if e.note]
 
 
 Decision = Literal["hire", "no_hire"]
 Confidence = Literal["high", "medium", "low"]
 
 
-class HiringDecision(BaseModel):
+class DecisionRationale(BaseModel):
     candidate_id: str = Field(description="The candidate's id exactly as given in the input.")
-    decision: Decision = Field(description="hire: advance to final interviews; no_hire: stop here.")
-    confidence: Confidence
-    rationale: str = Field(description="One or two sentences citing the decisive evidence.")
+    rationale: str = Field(description="One or two sentences explaining the given decision with evidence.")
 
 
-class HiringDecisions(BaseModel):
-    """Round 3: the committee's call on every shortlisted candidate."""
+class HiringRationales(BaseModel):
+    """Round 3, as the LLM returns it: an explanation for each decision code already made."""
 
-    decisions: list[HiringDecision]
+    rationales: list[DecisionRationale]
 
 
 class Recommendation(BaseModel):
     decision: Decision
     confidence: Confidence
+    rule: str  # the decision rule's outcome, e.g. "final 82 ≥ 75; no must-have missing; no high risk"
     rationale: str
 
 

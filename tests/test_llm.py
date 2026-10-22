@@ -7,7 +7,7 @@ from profile_matching.schemas import SkillRequirement
 from tests.fakes import FakeChatModel
 
 ENV_VARS = ("OPENAI_MODEL", "OPENAI_TEMPERATURE", "OPENAI_TIMEOUT", "OPENAI_MAX_RETRIES", "CHROMA_DB_DIR",
-            "REPORTS_DIR", "SHORTLIST_SIZE", "SCREENING_ROUNDS", "SAVE_REPORTS")
+            "REPORTS_DIR", "SHORTLIST_SIZE", "SCREENING_ROUNDS", "SAVE_REPORTS", "OPENAI_RESPONSES_API")
 
 
 @pytest.fixture
@@ -31,7 +31,12 @@ def test_settings_from_env(clean_env):
     clean_env.setenv("SHORTLIST_SIZE", "5")
     clean_env.setenv("SCREENING_ROUNDS", "2")
     clean_env.setenv("SAVE_REPORTS", "off")
-    assert Settings.from_env() == Settings("gpt-test", 0.3, 5.0, 0, "/tmp/db", "/tmp/reports", 5, 2, False)
+    clean_env.setenv("OPENAI_RESPONSES_API", "false")
+    assert Settings.from_env() == Settings(
+        llm_model="gpt-test", llm_temperature=0.3, llm_timeout=5.0, llm_max_retries=0,
+        llm_responses_api=False, db_dir="/tmp/db", reports_dir="/tmp/reports", shortlist_size=5,
+        screening_rounds=2, save_reports=False,
+    )
 
 
 @pytest.mark.parametrize("field, value", [("screening_rounds", 0), ("screening_rounds", 4), ("shortlist_size", 0)])
@@ -52,7 +57,7 @@ def test_chat_model_uses_settings(monkeypatch):
     try:
         model = llm.get_chat_model()
         assert isinstance(model, ChatOpenAI)
-        assert model.model_name == "gpt-test" and model.max_retries == 1
+        assert model.model_name == "gpt-test" and model.max_retries == 1 and model.use_responses_api
     finally:
         llm.get_chat_model.cache_clear()
 

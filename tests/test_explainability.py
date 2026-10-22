@@ -6,21 +6,23 @@ import pytest
 
 import matching_agent
 from profile_matching import explainability, screening
+from profile_matching.markdown import sentences
 from profile_matching.schemas import (
     DEEP_WEIGHT,
-    ImprovementSuggestions,
+    DeepReview,
     Improvement,
+    ImprovementSuggestions,
     Recommendation,
     Requirements,
+    RiskFlag,
 )
 from profile_matching.tools import make_tools
-from tests.fakes import SCREENING_RESPONSES, FakeChatModel, fake_assessment
+from tests.fakes import SCREENING_RESPONSES, FakeChatModel, fake_assessment, fake_review
 
 ROLE = Requirements.model_validate({
     "role_title": "Python Backend Engineer",
     "must_have": [{"skill": "Python", "min_years": None}, {"skill": "Redis", "min_years": 2}],
     "nice_to_have": ["Django", "GraphQL"], "min_total_years": None, "min_degree": None,
-    "ideal_profile": "Python backend engineer.",
 })
 
 
@@ -38,9 +40,11 @@ def full_record(match):
     evidence = [assessment.requirement_evidence[0].model_copy(update={"evidence": "Python | Django, 6 yrs"})]
     return match.model_copy(update={
         "assessment": assessment.model_copy(update={
-            "risk_flags": ["Short tenure at Acme"], "requirement_evidence": evidence,
+            "risk_flags": [RiskFlag(flag="Short tenure at Acme", severity="medium")],
+            "requirement_evidence": evidence,
         }),
-        "recommendation": Recommendation(decision="no_hire", confidence="medium", rationale="Thin Redis."),
+        "recommendation": Recommendation(decision="no_hire", confidence="medium", rule="final score 67 < 75",
+                                         rationale="Thin Redis."),
         "improvements": [Improvement(gap="Redis years", suggestion="Show Redis work", how_to_verify="Ask")],
     })
 
@@ -98,10 +102,11 @@ def test_full_candidate_report(john):
                     "## Strengths", "## Gaps", "## Risk flags", "## Improvement suggestions",
                     "## Retrieval reasoning"):
         assert section in report
-    assert "**Recommendation:** No hire (medium confidence). Thin Redis." in report
+    assert "**Recommendation:** No hire (medium confidence). Thin Redis. *(Rule: final score 67 < 75.)*" in report
     assert "· borderline" in report
-    assert "| Python | strong | Python \\| Django, 6 yrs |" in report  # pipes escaped in table cells
-    assert "- Short tenure at Acme" in report
+    assert "| Python | must-have | strong | Python \\| Django, 6 yrs | – |" in report  # pipes escaped
+    assert "- Short tenure at Acme (medium)" in report
+    assert "computed from the verdicts below by a fixed rubric" in report
 
 
 def test_round_one_candidate_report_has_no_deep_sections(john):
@@ -181,15 +186,14 @@ def test_report_tool_errors(report_tool, state, error):
 # --- end to end ---------------------------------------------------------------------------------------------
 
 
-def _screen(services, deep_score: int, **settings):
-    services.model = FakeChatModel({Requirements: ROLE, **SCREENING_RESPONSES})
-    services.model.responses[type(fake_assessment())] = fake_assessment(deep_score)
+def _screen(services, verdict: str, **settings):
+    services.model = FakeChatModel({Requirements: ROLE, **SCREENING_RESPONSES, DeepReview: fake_review(verdict)})
     services.settings = dataclasses.replace(services.settings, shortlist_size=3, **settings)
     return matching_agent.screen(services, "Python backend engineer")
 
 
 def test_pipeline_suggests_improvements_and_saves_reports(services):
-    state = _screen(services, deep_score=50)  # final scores land in the borderline band
+    state = _screen(services, verdict="partial")  # deep 50: final scores land in the borderline band
     borderline = [m for m in state["shortlist"] if m.borderline]
     assert borderline and all(m.improvements for m in borderline)
     assert sum(c is ImprovementSuggestions for c, _ in services.model.calls) == 1
@@ -202,6 +206,11 @@ def test_pipeline_suggests_improvements_and_saves_reports(services):
 
 
 def test_pipeline_without_saving(services):
-    state = _screen(services, deep_score=90, save_reports=False)
+    state = _screen(services, verdict="strong", save_reports=False)
     assert state["report_dir"] is None and not Path(services.settings.reports_dir).exists()
     assert "Reports saved" not in state["messages"][-1].text
+
+
+def test_sentences_join_sentence_like_items():
+    assert sentences(["Strong React.", " Led a team. ", ""]) == "Strong React; Led a team."
+    assert sentences([]) == "none"

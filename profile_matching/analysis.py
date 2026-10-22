@@ -35,24 +35,37 @@ def _check_range(name: str, value: int, limits: tuple[int, int]) -> None:
 
 # Match fields shown next to a candidate's profile in comparisons and prompts.
 FACT_FIELDS = {
-    "rank", "match_score", "passes_must_haves", "must_have_checks", "matched_skills",
-    "missing_must_haves", "score_breakdown", "reasoning",
+    "rank", "final_score", "match_score", "passes_must_haves", "must_have_checks", "matched_skills",
+    "missing_must_haves", "score_breakdown", "reasoning", "recommendation",
 }
 
 
 def candidate_facts(
-    services: Services, profiles: list[CandidateProfile], requirements: Requirements | None
+    services: Services,
+    profiles: list[CandidateProfile],
+    requirements: Requirements | None,
+    shortlist: list[CandidateMatch] = (),
 ) -> list[dict]:
     """Each profile's summary and, given requirements, how it matches them.
 
-    With requirements, candidates are ranked among themselves (see
-    ``screening.rank_matches``). Without, the given order is kept.
+    Shortlisted candidates bring their final record (deep score, decision), so
+    explanations use the scores that produced the ranking; others are screened
+    in round 1. Candidates are ranked among themselves by final score (see
+    ``screening.rank_matches``). Without requirements, the given order is kept.
     """
     facts = {profile.id: profile.summary() for profile in profiles}
     if requirements is None:
         return list(facts.values())
-    matches = screening.evaluate(services, requirements, profiles)
-    return [facts[m.id] | m.model_dump(include=FACT_FIELDS) for m in matches]
+    known = {match.id: match for match in shortlist}
+    fresh = [profile for profile in profiles if profile.id not in known]
+    matches = [known[p.id] for p in profiles if p.id in known]
+    if fresh:
+        matches += screening.evaluate(services, requirements, fresh)
+    return [
+        facts[m.id] | m.model_dump(include=FACT_FIELDS)
+        | {"deep_score": m.assessment.deep_score if m.assessment else None}
+        for m in screening.rank_matches(matches)
+    ]
 
 
 def _llm_payload(requirements: Requirements | None, **sections) -> str:
@@ -67,12 +80,15 @@ def _to_id(services: Services, ref: str) -> str | None:
 
 
 def compare_candidates(
-    services: Services, refs: list[str], requirements: Requirements | None = None
+    services: Services,
+    refs: list[str],
+    requirements: Requirements | None = None,
+    shortlist: list[CandidateMatch] = (),
 ) -> dict:
     """Head-to-head comparison of 2-5 candidates, for the role when one is set."""
     profiles = services.candidates.resolve_many(refs)
     _check_range("Number of distinct candidates", len(profiles), COMPARE_LIMITS)
-    facts = candidate_facts(services, profiles, requirements)
+    facts = candidate_facts(services, profiles, requirements, shortlist)
     by_id = {p.id: p for p in profiles}
     payload = _llm_payload(
         requirements,
@@ -110,12 +126,16 @@ def focus_areas(fact: dict, requirements: Requirements | None) -> dict:
 
 
 def generate_interview_questions(
-    services: Services, ref: str, requirements: Requirements | None = None, count: int = 6
+    services: Services,
+    ref: str,
+    requirements: Requirements | None = None,
+    count: int = 6,
+    shortlist: list[CandidateMatch] = (),
 ) -> dict:
     """Screening questions targeted at one candidate's gaps, claims and strengths."""
     _check_range("count", count, QUESTION_LIMITS)
     profile = services.candidates.resolve(ref)
-    (fact,) = candidate_facts(services, [profile], requirements)
+    (fact,) = candidate_facts(services, [profile], requirements, shortlist)
     focus = focus_areas(fact, requirements)
     payload = _llm_payload(
         requirements,

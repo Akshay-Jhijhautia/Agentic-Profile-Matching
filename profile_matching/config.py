@@ -24,10 +24,12 @@ def _flag(name: str, default: bool) -> bool:
 @dataclass(frozen=True)
 class Settings:
     llm_model: str = resume_rag.DEFAULT_LLM_MODEL
-    # None keeps the provider default; newer models (gpt-6-luna) accept no other value.
+    # None keeps the provider default; newer OpenAI models accept no other value.
     llm_temperature: float | None = None
     llm_timeout: float = 60.0
     llm_max_retries: int = 2
+    # OpenAI's Responses API: needed for tool calling with reasoning models (gpt-5.6, gpt-6).
+    llm_responses_api: bool = True
     db_dir: str = resume_rag.DEFAULT_DB_DIR
     # The only directory the agent may write to (reports, summaries).
     reports_dir: str = "reports"
@@ -46,6 +48,7 @@ class Settings:
             llm_temperature=_optional_float("OPENAI_TEMPERATURE"),
             llm_timeout=_optional_float("OPENAI_TIMEOUT") or defaults.llm_timeout,
             llm_max_retries=int(os.getenv("OPENAI_MAX_RETRIES") or defaults.llm_max_retries),
+            llm_responses_api=_flag("OPENAI_RESPONSES_API", defaults.llm_responses_api),
             db_dir=os.getenv("CHROMA_DB_DIR") or defaults.db_dir,
             reports_dir=os.getenv("REPORTS_DIR") or defaults.reports_dir,
             shortlist_size=int(os.getenv("SHORTLIST_SIZE") or defaults.shortlist_size),

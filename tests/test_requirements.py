@@ -99,8 +99,9 @@ def test_query_text_reads_like_a_job_description():
         min_degree="Master's",
     )
     text = req.query_text()
-    assert text.splitlines()[0] == "Frontend Engineer"
-    assert "Must have: React (3+ yrs)" in text
+    # Only structured requirements: no role title or model-written prose.
+    assert text.splitlines()[0] == "Must have: React (3+ yrs)"
+    assert "Frontend Engineer" not in text
     assert "Nice to have: GraphQL" in text
     assert "Experience: 5+ years" in text
     assert "Education: Master's degree or higher" in text
