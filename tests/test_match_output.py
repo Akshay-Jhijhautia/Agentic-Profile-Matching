@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from profile_matching.rag import job_matcher, resume_rag
-from tests.paths import RESUMES_DIR, JD_DIR
+from profile_matching.rag import job_matcher
+from tests.paths import JD_DIR, RESUMES_DIR
 
 MATCH_KEYS = {
     "candidate_name", "resume_path", "match_score", "matched_skills", "relevant_excerpts", "reasoning"
@@ -13,18 +13,6 @@ MATCH_KEYS = {
 
 def _jd(name):
     return (JD_DIR / f"{name}.txt").read_text()
-
-
-@pytest.fixture(scope="module")
-def db_dir(tmp_path_factory):
-    path = str(tmp_path_factory.mktemp("db"))
-    resume_rag.ResumeRAG(path, embedder=resume_rag.HashingEmbedder()).index_directory(str(RESUMES_DIR))
-    return path
-
-
-@pytest.fixture(scope="module")
-def matcher(db_dir):
-    return job_matcher.JobMatcher(resume_rag.ResumeRAG(db_dir))
 
 
 def _names(result):
@@ -211,10 +199,10 @@ def test_details_add_breakdown(matcher):
 # --- CLI ----------------------------------------------------------------------------------------------
 
 
-def test_cli_writes_json(db_dir, tmp_path, capsys):
+def test_cli_writes_json(hashing_db, tmp_path, capsys):
     out = tmp_path / "results" / "match.json"
     code = job_matcher.main(
-        ["--db", db_dir, "--jd-file", str(JD_DIR / "frontend_react.txt"), "--k", "2", "--out", str(out)]
+        ["--db", hashing_db, "--jd-file", str(JD_DIR / "frontend_react.txt"), "--k", "2", "--out", str(out)]
     )
     assert code == 0
     printed = json.loads(capsys.readouterr().out)
@@ -222,8 +210,8 @@ def test_cli_writes_json(db_dir, tmp_path, capsys):
     assert [m["candidate_name"] for m in printed["top_matches"]][0] == "Maria Garcia"
 
 
-def test_cli_inline_jd_with_must_have(db_dir, capsys):
-    code = job_matcher.main(["--db", db_dir, "--jd", "Python engineer", "--must-have", "degree:phd"])
+def test_cli_inline_jd_with_must_have(hashing_db, capsys):
+    code = job_matcher.main(["--db", hashing_db, "--jd", "Python engineer", "--must-have", "degree:phd"])
     assert code == 0
     assert _names(json.loads(capsys.readouterr().out)) == ["Priya Patel"]
 
@@ -235,8 +223,8 @@ def test_cli_inline_jd_with_must_have(db_dir, capsys):
         (["--jd-file", "missing_jd.txt"], "Could not read job description"),
     ],
 )
-def test_cli_errors(db_dir, capsys, args, message):
-    assert job_matcher.main(["--db", db_dir, *args]) == 1
+def test_cli_errors(hashing_db, capsys, args, message):
+    assert job_matcher.main(["--db", hashing_db, *args]) == 1
     assert message in capsys.readouterr().err
 
 

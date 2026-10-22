@@ -51,3 +51,7 @@ def test_with_implied_adds_languages_once():
         "Django", "Flask", "React", "Python", "JavaScript"
     ]
     assert skills_vocab.with_implied(["Python", "Django"]) == ["Python", "Django"]
+
+
+def test_managed_cloud_services_imply_their_cloud():
+    assert skills_vocab.with_implied(["AWS SageMaker", "AWS Glue"]) == ["AWS SageMaker", "AWS Glue", "AWS"]

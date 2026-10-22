@@ -46,7 +46,7 @@ DEFAULT_DB_DIR = "chroma_db"
 COLLECTION_NAME = "resumes"
 # Part of every resume's content hash: bump it when chunking or metadata
 # extraction changes so the next `index` run refreshes every resume.
-PIPELINE_VERSION = "2"
+PIPELINE_VERSION = "3"
 
 MAX_CHUNK_CHARS = 1500
 HEADER_SECTION = "Header"

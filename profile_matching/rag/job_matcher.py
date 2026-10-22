@@ -407,9 +407,19 @@ class JobMatcher:
         parsed = parse_job_description(job_description)
         requirements = (parsed["must_haves"] if use_jd_must_haves else []) + (must_haves or [])
         parsed["must_haves"] = _dedupe_must_haves(requirements)
+        return self.match_parsed(parsed, k=k, include_filtered=include_filtered, details=details)
 
+    def match_parsed(
+        self, parsed: dict, k: int = TOP_K, include_filtered: bool = False, details: bool = False
+    ) -> dict:
+        """``match`` for requirements that are already parsed.
+
+        ``parsed`` has the ``parse_job_description`` shape; its ``text`` is the
+        search query and its ``must_haves`` are applied as given. Returns the
+        same document as ``match``.
+        """
         matches, filtered = [], []
-        for candidate in self.hybrid_search(job_description, k=None, parsed=parsed):
+        for candidate in self.hybrid_search(parsed["text"], k=None, parsed=parsed):
             checks = check_must_haves(candidate["metadata"], parsed["must_haves"])
             score = round(100 * candidate["hybrid_score"])
             failed = [c["detail"] for c in checks if c["status"] == "not_met"]

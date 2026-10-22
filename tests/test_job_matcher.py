@@ -2,20 +2,11 @@
 import pytest
 
 from profile_matching.rag import job_matcher, resume_rag
-from tests.paths import RESUMES_DIR, JD_DIR
+from tests.paths import JD_DIR
 
 
 def _jd(name):
     return (JD_DIR / f"{name}.txt").read_text()
-
-
-@pytest.fixture(scope="module")
-def matcher(tmp_path_factory):
-    rag = resume_rag.ResumeRAG(
-        str(tmp_path_factory.mktemp("db")), embedder=resume_rag.HashingEmbedder()
-    )
-    rag.index_directory(str(RESUMES_DIR))
-    return job_matcher.JobMatcher(rag)
 
 
 # --- parse_job_description ------------------------------------------------------------

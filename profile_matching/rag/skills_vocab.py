@@ -207,7 +207,8 @@ def find_skills(text: str) -> list[str]:
     return skills
 
 
-# Using a framework implies using its language: years with Django count as years with Python.
+# Using a framework implies using its language (years with Django count as years with
+# Python), and a managed service implies its cloud.
 IMPLIED_SKILLS = {
     "Django": "Python", "Django REST Framework": "Python", "Flask": "Python",
     "FastAPI": "Python", "Celery": "Python", "pytest": "Python", "pandas": "Python",
@@ -217,6 +218,8 @@ IMPLIED_SKILLS = {
     "Node.js": "JavaScript", "Express": "JavaScript", "Angular": "TypeScript",
     "Vue.js": "JavaScript", "Jest": "JavaScript", "SwiftUI": "Swift", "XCTest": "Swift",
     "Jetpack Compose": "Kotlin", "Flutter": "Dart",
+    # Managed services imply their cloud.
+    "AWS SageMaker": "AWS", "AWS Glue": "AWS",
 }
 
 
