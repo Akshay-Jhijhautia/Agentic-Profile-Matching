@@ -56,6 +56,7 @@ python main.py screen "Find me candidates with React and 3+ years experience" --
 | `profile_matching/cli.py` | Interactive terminal chat (rich) driving the human feedback loop |
 | `profile_matching/screening.py` | Screening rounds: score every resume, rank, shortlist |
 | `profile_matching/reports.py` | Markdown shortlist report and chat summary |
+| `profile_matching/changes.py` | Requirement and ranking diffs with a reason for every move |
 | `main.py` | Single CLI entry point |
 | `resumes/` | Demo dataset: 100 resumes (12 hand-written + 88 synthetic) in PDF, DOCX and TXT |
 | `job_descriptions/` | Sample job descriptions |
@@ -101,17 +102,20 @@ The conversational graph (`python matching_agent.py`) adds the human feedback
 loop and a tool-using assistant:
 
 ```
-START → route_intent ─┬─ new_search → parse_jd → … → generate_report → human_feedback
+START → route_intent ─┬─ new_search → parse_jd → extract_requirements ─┐
+                      ├─ refine → refine_requirements ─────────────────┴→ search_resumes
                       ├─ ask → assistant ⇄ tools → human_feedback
                       └─ end → END
-human_feedback (waits for the user) → route_intent
+search_resumes → rank_candidates → [explain_changes, after a refine] → generate_report
+generate_report → human_feedback (waits for the user) → route_intent
 ```
 
 `human_feedback` pauses the graph with LangGraph's `interrupt()`; the chat
 resumes it with the user's next message (`Command(resume=...)`), and the
 in-memory checkpointer keeps the whole conversation per thread. `route_intent`
-classifies each message: a new role or JD starts a new search, anything about
-the current candidates goes to the assistant, and "bye"/"exit" ends the chat.
+classifies each message: a new role or JD starts a new search, a change to the
+current requirements refines it, anything about the current candidates goes to
+the assistant, and "bye"/"exit" ends the chat.
 The assistant sees the current role and shortlist in its system prompt and
 answers with the agent tools below, for example:
 
@@ -120,6 +124,25 @@ answers with the agent tools below, for example:
   top 3 ids, answered as a Markdown table plus a verdict.
 - "Why did John rank higher than Jane?": a comparison that names the score
   components and must-have checks that differ.
+
+### Iterative refinement
+
+Messages such as "make Kubernetes a must-have", "5+ years of React instead",
+"drop the degree requirement" or "TypeScript is only nice to have" edit the
+current requirements (`refine_requirements`, a new version in
+`requirements_history`) and re-rank every resume. `explain_changes`
+(`profile_matching/changes.py`) then computes, deterministically:
+
+- the requirement edits ("React: 3+ yrs → 5+ yrs");
+- every candidate who entered, left or moved in the shortlist, with the reason:
+  a must-have they now fail or no longer fail, the score component whose
+  weighted change moved them most ("semantic fit 71% → 84%"), or, when
+  nothing about them changed, the candidates knocked out above them or who
+  overtook them.
+
+The report gains a "What changed" table, the chat reply opens with a short LLM
+narrative of that diff, and the assistant sees the changes in its context, so
+"who dropped out and why?" is answered from the computed reasons.
 
 Chat commands: `/report` (show the latest report), `/reset` (new
 conversation), `/help`, `/exit`. If a turn fails (for example the API is

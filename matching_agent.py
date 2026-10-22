@@ -7,10 +7,12 @@ One-shot (``conversational=False``):
 
 Conversational (``conversational=True``), with a human feedback loop:
 
-    START → route_intent ─┬─ new_search → parse_jd → … → generate_report → human_feedback
+    START → route_intent ─┬─ new_search → parse_jd → extract_requirements ─┐
+                          ├─ refine → refine_requirements ─────────────────┴→ search_resumes
                           ├─ ask → assistant ⇄ tools → human_feedback
                           └─ end → END
-    human_feedback (waits for the user) → route_intent
+    search_resumes → rank_candidates → [explain_changes, after a refine] → generate_report
+    generate_report → human_feedback (waits for the user) → route_intent
 
 Usage:
     python matching_agent.py                                   interactive chat
@@ -33,13 +35,15 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 from profile_matching import cli
 from profile_matching.agent.nodes import ConversationNodes, PipelineNodes
-from profile_matching.agent.routing import ROUTES, IntentRouter, next_step
+from profile_matching.agent.routing import ROUTES, IntentRouter, after_ranking, next_step
 from profile_matching.agent.state import AgentState, make_checkpointer
 from profile_matching.rag import fs_tools, resume_rag
 from profile_matching.services import Services
 from profile_matching.tools import make_tools
 
 PIPELINE = ("parse_jd", "extract_requirements", "search_resumes", "rank_candidates", "generate_report")
+# Runs between ranking and the report, only when the turn refined the requirements.
+EXPLAIN = "explain_changes"
 
 
 def build_graph(
@@ -54,10 +58,13 @@ def build_graph(
     """
     pipeline = PipelineNodes(services)
     builder = StateGraph(AgentState)
-    for name in PIPELINE:
+    for name in (*PIPELINE, EXPLAIN):
         builder.add_node(name, getattr(pipeline, name))
-    for current, following in pairwise(PIPELINE):
+    *search, report = PIPELINE
+    for current, following in pairwise(search):
         builder.add_edge(current, following)
+    builder.add_conditional_edges(search[-1], after_ranking, [EXPLAIN, report])
+    builder.add_edge(EXPLAIN, report)
 
     if not conversational:
         builder.add_edge(START, PIPELINE[0])
@@ -67,12 +74,14 @@ def build_graph(
     tools = make_tools(services)
     conversation = ConversationNodes(services, tools)
     builder.add_node("route_intent", IntentRouter(services))
+    builder.add_node("refine_requirements", pipeline.refine_requirements)
     builder.add_node("assistant", conversation.assistant)
     builder.add_node("tools", ToolNode(tools))
     builder.add_node("human_feedback", conversation.human_feedback)
 
     builder.add_edge(START, "route_intent")
     builder.add_conditional_edges("route_intent", next_step, ROUTES)
+    builder.add_edge("refine_requirements", "search_resumes")
     builder.add_edge(PIPELINE[-1], "human_feedback")
     builder.add_conditional_edges("assistant", tools_condition, {"tools": "tools", END: "human_feedback"})
     builder.add_edge("tools", "assistant")

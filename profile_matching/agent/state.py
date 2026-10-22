@@ -5,7 +5,7 @@
   ``requirements`` and every earlier version in ``requirements_history``);
 - the screening results (``candidates``: every resume scored and ranked) and
   the ``shortlist`` with each candidate's reasoning, plus the previous
-  shortlist so changes in ranking can be explained;
+  screening so a refinement's ``ranking_diff`` can explain what moved;
 - the latest ``report`` and the routing decision for the latest message.
 """
 
@@ -22,6 +22,8 @@ from langgraph.graph.message import add_messages
 from ..schemas import (
     CandidateMatch,
     MustHaveCheck,
+    RankChange,
+    RankingDiff,
     Requirements,
     ScoreBreakdown,
     SkillRequirement,
@@ -35,7 +37,9 @@ class AgentState(TypedDict, total=False):
     requirements_history: Annotated[list[Requirements], operator.add]
     candidates: list[CandidateMatch]
     shortlist: list[CandidateMatch]
+    previous_candidates: list[CandidateMatch]
     previous_shortlist: list[CandidateMatch]
+    ranking_diff: RankingDiff | None  # set by a refinement, cleared by a new search
     report: str
     intent: str  # the latest routing decision (see ``routing.ROUTES``)
 
@@ -43,7 +47,9 @@ class AgentState(TypedDict, total=False):
 # Our types stored in checkpoints. LangGraph only restores allow-listed types
 # (others are deprecated and will be blocked), so every model the state holds,
 # including nested ones, is registered here.
-STATE_MODELS = (Requirements, SkillRequirement, CandidateMatch, MustHaveCheck, ScoreBreakdown)
+STATE_MODELS = (
+    Requirements, SkillRequirement, CandidateMatch, MustHaveCheck, ScoreBreakdown, RankingDiff, RankChange,
+)
 
 
 def make_checkpointer() -> InMemorySaver:

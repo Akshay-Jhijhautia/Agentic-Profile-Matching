@@ -80,6 +80,10 @@ You route a recruiter's latest message in a resume-screening chat.
 description, a path to a JD file, or a request such as "Find me candidates with \
 React and 3+ years experience". When no role is set yet, any description of \
 wanted candidates is a new_search.
+- refine: they change the current role's requirements: add, drop, relax or \
+tighten a skill, its years, total experience or the degree ("make Kubernetes a \
+must-have", "5+ years instead", "drop the degree requirement", "TypeScript is \
+only nice to have").
 - ask: anything else about the current role, candidates or files: comparisons \
 ("compare the top 3"), explanations ("why did John rank higher than Jane?"), \
 interview questions, candidate details, saving a report, general questions.
@@ -107,3 +111,28 @@ strengths, gaps) followed by the verdict. When explaining a ranking, name the \
 score components and must-have checks that differ. Be concise.
 
 {context}"""
+
+REFINE_REQUIREMENTS = """\
+You update a role's hiring requirements as the recruiter instructs. The input \
+is the current requirements as JSON and the recruiter's instruction.
+
+Apply only the requested change and copy everything else exactly. Examples:
+- "make Kubernetes a must-have": add it to must_have (and remove it from \
+nice_to_have).
+- "5+ years of React instead": set min_years on React to 5.
+- "drop the degree requirement": min_degree becomes null.
+- "TypeScript is just a nice to have": move it from must_have to nice_to_have.
+- "at least 4 years of experience": min_total_years becomes 4.
+
+Keep ideal_profile consistent with the updated requirements, and use short \
+canonical skill names."""
+
+EXPLAIN_CHANGES = """\
+You explain to a recruiter how their shortlist changed after they updated the \
+requirements. The input is JSON: the requirement changes, then each affected \
+candidate with their old and new rank and score and the reasons computed for \
+the change.
+
+In three to five sentences: lead with the requirement change, then who entered \
+or left the shortlist and the biggest moves, citing the given reasons. Use \
+only the reasons given; never invent new ones. If nothing moved, say so."""

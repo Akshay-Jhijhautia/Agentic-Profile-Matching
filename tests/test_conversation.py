@@ -13,6 +13,7 @@ from profile_matching import cli
 from profile_matching.agent.routing import IntentRouter
 from profile_matching.schemas import (
     CandidateNote,
+    ChangeNarrative,
     ComparisonVerdict,
     IntentDecision,
     Requirements,
@@ -222,3 +223,64 @@ def test_repl_exits_on_ctrl_d(chat, monkeypatch):
 
     monkeypatch.setattr(builtins, "input", eof)
     assert cli.run(chat.graph, "gpt-test", console=chat.console) == 0
+
+
+# --- refinement --------------------------------------------------------------------------------------
+
+
+DJANGO_MUST = ROLE.model_copy(update={
+    "must_have": [*ROLE.must_have, ROLE.must_have[0].model_copy(update={"skill": "Django"})],
+    "nice_to_have": [],
+})
+
+
+def refine_router(messages) -> IntentDecision:
+    latest = messages[1].content.rsplit("Latest user message: ", 1)[1].lower()
+    return IntentDecision(intent="refine" if "must-have" in latest else route_by_keyword(messages).intent)
+
+
+def test_refinement_reranks_and_explains_the_changes(chat, services):
+    services.model.responses[IntentDecision] = refine_router
+    services.model.responses[ChangeNarrative] = ChangeNarrative(narrative="Django is now required.")
+    chat.send("Find me a Python backend engineer")
+    before = state(chat)["shortlist"]
+    services.model.responses[Requirements] = DJANGO_MUST
+    chat.send("Make Django a must-have")
+
+    values = state(chat)
+    assert values["intent"] == "refine"
+    assert values["requirements"] == DJANGO_MUST
+    assert values["requirements_history"] == [ROLE, DJANGO_MUST]
+    assert values["previous_shortlist"] == before
+    assert all("Django" in m.matched_skills for m in values["shortlist"])
+
+    # The refine prompt carried the current requirements and the instruction.
+    refine_call = [c for c in services.model.calls if c[0] is Requirements][-1]
+    assert '"role_title":"Python Backend Engineer"' in refine_call[1][1].content
+    assert refine_call[1][1].content.endswith("Instruction: Make Django a must-have")
+
+    diff = values["ranking_diff"]
+    assert diff.requirement_changes == ["Django is now a must-have"]
+    dropped = diff.of_kind("dropped")
+    assert dropped and all(any("now fails" in r for r in c.reasons) for c in dropped)
+
+    assert "## What changed" in values["report"] and "Django is now a must-have" in values["report"]
+    summary = values["messages"][-1].text
+    assert summary.startswith("Django is now required.") and "Screened 12 resumes" in summary
+    assert "Updated the requirements" in output(chat) and "Ranking changes:" in output(chat)
+
+
+def test_new_search_after_a_refinement_has_no_changes_section(chat, services):
+    services.model.responses[IntentDecision] = refine_router
+    services.model.responses[ChangeNarrative] = ChangeNarrative(narrative="Django is now required.")
+    chat.send("Find me a Python backend engineer")
+    services.model.responses[Requirements] = DJANGO_MUST
+    chat.send("Make Django a must-have")
+    chat.send("Find me a Python backend engineer")  # extraction now answers DJANGO_MUST again
+    assert "## What changed" not in state(chat)["report"]
+
+
+def test_refine_without_a_role_starts_a_new_search(services):
+    services.model = FakeChatModel({IntentDecision: IntentDecision(intent="refine")})
+    update = IntentRouter(services)({"messages": [HumanMessage("Make React a must-have")]})
+    assert update == {"intent": "new_search"}

@@ -6,7 +6,7 @@ reasoning already computed, so they never disagree with the ranking.
 
 from __future__ import annotations
 
-from .schemas import CandidateMatch, Requirements
+from .schemas import CandidateMatch, RankChange, RankingDiff, Requirements
 
 # Knocked-out candidates listed so a strict search still shows who came close.
 NEAR_MISSES = 3
@@ -47,13 +47,48 @@ def _percent(value: float | None) -> str:
     return "–" if value is None else f"{value:.0%}"
 
 
+def _or_dash(value: int | None) -> str:
+    return "–" if value is None else str(value)
+
+
+def _movement(change: RankChange) -> str:
+    """"▲ 5 → 2", "▲ new (was #14)", "▼ left (now #12)", "= 3"."""
+    if change.kind == "new":
+        return f"▲ new (was #{change.old_rank})" if change.old_rank else "▲ new"
+    if change.kind == "dropped":
+        return f"▼ left (now #{change.new_rank})" if change.new_rank else "▼ left"
+    arrow = {"up": "▲", "down": "▼", "same": "="}[change.kind]
+    return f"= {change.new_rank}" if change.kind == "same" else f"{arrow} {change.old_rank} → {change.new_rank}"
+
+
+def changes_section(diff: RankingDiff) -> list[str]:
+    """Markdown lines: the requirement edits and how each affected candidate moved, with reasons."""
+    lines = ["## What changed", ""]
+    lines += [f"- {change}" for change in diff.requirement_changes] or ["- The requirements did not change."]
+    moved = diff.of_kind("new", "dropped", "up", "down")
+    if moved:
+        lines += ["", "| Candidate | Change | Score | Why |", "|---|---|---|---|"]
+        for change in moved:
+            score = f"{_or_dash(change.old_score)} → {_or_dash(change.new_score)}"
+            lines.append(f"| {change.name} | {_movement(change)} | {score} | {_join(change.reasons, '–')} |")
+    else:
+        lines += ["", "The shortlist order is unchanged."]
+    return lines + [""]
+
+
 def shortlist_report(
-    requirements: Requirements, candidates: list[CandidateMatch], shortlist: list[CandidateMatch]
+    requirements: Requirements,
+    candidates: list[CandidateMatch],
+    shortlist: list[CandidateMatch],
+    diff: RankingDiff | None = None,
 ) -> str:
-    """The full shortlist report: requirements, ranking table, reasoning, near misses."""
+    """The full shortlist report: requirements, what changed (after a refinement),
+    ranking table, reasoning and near misses."""
     passing = _passing(candidates)
     lines = [f"# Shortlist: {requirements.role_title}", ""]
     lines += [f"- {line}" for line in requirements_lines(requirements)] + [""]
+    if diff is not None:
+        lines += changes_section(diff)
     lines.append(
         f"Screened {len(candidates)} resumes: {passing} meet every must-have, "
         f"{len(candidates) - passing} were knocked out."
@@ -107,9 +142,12 @@ def shortlist_summary(
 
 
 def conversation_context(
-    requirements: Requirements | None, candidates: list[CandidateMatch], shortlist: list[CandidateMatch]
+    requirements: Requirements | None,
+    candidates: list[CandidateMatch],
+    shortlist: list[CandidateMatch],
+    diff: RankingDiff | None = None,
 ) -> str:
-    """The current search, as text for the assistant's system prompt."""
+    """The current search (and the latest refinement's changes) for the assistant's system prompt."""
     if requirements is None:
         return "No role is set yet. The user can describe one to start a search."
     lines = [f"Current role: {requirements.role_title}", *requirements_lines(requirements)]
@@ -117,4 +155,8 @@ def conversation_context(
     if shortlist:
         lines.append("Shortlist (rank. name (id): score, must-haves):")
         lines += [f"{m.rank}. {m.name} ({m.id}): {m.match_score}, {_must_have_cell(m)}" for m in shortlist]
+    if diff is not None:
+        lines.append(f"Latest refinement: {_join(diff.requirement_changes, 'no requirement changes')}")
+        lines += [f"- {c.name}: {_movement(c)}, {_join(c.reasons, 'no reason recorded')}"
+                  for c in diff.of_kind("new", "dropped", "up", "down")]
     return "\n".join(lines)

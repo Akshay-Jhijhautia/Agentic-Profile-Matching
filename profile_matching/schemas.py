@@ -245,11 +245,42 @@ class CandidateMatch(BaseModel):
 
 # --- conversation routing (LLM output) ---------------------------------------------------------
 
-Intent = Literal["new_search", "ask", "end"]
+Intent = Literal["new_search", "refine", "ask", "end"]
 
 
 class IntentDecision(BaseModel):
     intent: Intent = Field(
-        description="new_search: screen for a new role or criteria; ask: anything about the "
-        "current candidates, role or files; end: the user is finished."
+        description="new_search: screen for a new role from scratch; refine: change the current "
+        "requirements; ask: anything about the current candidates, role or files; end: the user "
+        "is finished."
     )
+
+
+# --- ranking changes after a refinement ------------------------------------------------------------
+
+ChangeKind = Literal["new", "dropped", "up", "down", "same"]
+
+
+class RankChange(BaseModel):
+    """How one candidate's place in the shortlist changed, and why."""
+
+    id: str
+    name: str
+    kind: ChangeKind
+    old_rank: int | None  # overall rank before (None if not screened before)
+    new_rank: int | None  # overall rank now
+    old_score: int | None
+    new_score: int | None
+    reasons: list[str]
+
+
+class RankingDiff(BaseModel):
+    requirement_changes: list[str]
+    changes: list[RankChange]  # everyone in the new shortlist, then everyone who left it
+
+    def of_kind(self, *kinds: ChangeKind) -> list[RankChange]:
+        return [change for change in self.changes if change.kind in kinds]
+
+
+class ChangeNarrative(BaseModel):
+    narrative: str = Field(description="Three to five sentences for the recruiter.")

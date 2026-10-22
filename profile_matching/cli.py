@@ -127,6 +127,15 @@ class ChatSession:
         self._note(f"Must have: {', '.join(r.label for r in requirements.must_have) or 'none'}")
         self._note(f"Nice to have: {', '.join(requirements.nice_to_have) or 'none'}")
 
+    def _on_refine_requirements(self, change: dict) -> None:
+        self._note("Updated the requirements:")
+        self._on_extract_requirements(change)
+
+    def _on_explain_changes(self, change: dict) -> None:
+        diff = change["ranking_diff"]
+        counts = {kind: len(diff.of_kind(kind)) for kind in ("new", "dropped", "up", "down")}
+        self._note("Ranking changes: " + ", ".join(f"{n} {kind}" for kind, n in counts.items()))
+
     def _on_search_resumes(self, change: dict) -> None:
         candidates = change["candidates"]
         passing = sum(m.passes_must_haves for m in candidates)

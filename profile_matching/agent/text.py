@@ -1,4 +1,4 @@
-"""Read the conversation in state."""
+"""Read the conversation and the current turn from state."""
 
 from __future__ import annotations
 
@@ -19,3 +19,8 @@ def last_human_text(state: dict) -> str:
 def last_ai_text(state: dict) -> str:
     """The latest assistant message with text (tool-call-only messages are skipped)."""
     return _last_text(state.get("messages", []), AIMessage)
+
+
+def refined(state: dict) -> bool:
+    """Whether this turn re-ranks after a refinement (rather than a new search)."""
+    return state.get("intent") == "refine" and len(state.get("requirements_history", [])) > 1

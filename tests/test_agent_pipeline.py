@@ -39,11 +39,13 @@ def run(services):
 # --- graph -------------------------------------------------------------------------------------------
 
 
-def test_graph_is_the_linear_pipeline(services):
+def test_graph_is_the_pipeline(services):
     graph = matching_agent.build_graph(services).get_graph()
     edges = {(e.source, e.target) for e in graph.edges}
     path = ("__start__", *matching_agent.PIPELINE, "__end__")
-    assert edges == set(zip(path, path[1:]))
+    # explain_changes can sit between ranking and the report, but only runs after a refinement.
+    detour = {("rank_candidates", "explain_changes"), ("explain_changes", "generate_report")}
+    assert edges == set(zip(path, path[1:])) | detour
 
 
 def test_pipeline_screens_every_resume_and_shortlists_passing_ones(run):

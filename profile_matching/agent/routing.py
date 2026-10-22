@@ -8,12 +8,12 @@ from .. import llm, prompts
 from ..schemas import IntentDecision
 from ..services import Services
 from .state import AgentState
-from .text import last_ai_text, last_human_text
+from .text import last_ai_text, last_human_text, refined
 
 # Messages that end the conversation without asking the model.
 EXIT_WORDS = {"exit", "quit", "bye", "done", "stop", "thanks, bye"}
 # Where each intent goes next.
-ROUTES = {"new_search": "parse_jd", "ask": "assistant", "end": END}
+ROUTES = {"new_search": "parse_jd", "refine": "refine_requirements", "ask": "assistant", "end": END}
 # How much of the previous assistant message the router sees (enough to resolve "yes, do it").
 CONTEXT_CHARS = 600
 
@@ -35,9 +35,16 @@ class IntentRouter:
             f"Latest user message: {text}",
         ])
         decision = llm.structured(IntentDecision, prompts.ROUTE_INTENT, routing_input, model=self.services.model)
+        if decision.intent == "refine" and requirements is None:
+            return {"intent": "new_search"}  # nothing to refine yet: the message describes a role
         return {"intent": decision.intent}
 
 
 def next_step(state: AgentState) -> str:
     """Conditional edge after ``route_intent``: the intent names the branch."""
     return state["intent"]
+
+
+def after_ranking(state: AgentState) -> str:
+    """Conditional edge after ``rank_candidates``: explain changes only after a refinement."""
+    return "explain_changes" if refined(state) else "generate_report"
