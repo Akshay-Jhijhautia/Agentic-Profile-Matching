@@ -22,8 +22,7 @@ from statistics import mean
 from dotenv import load_dotenv
 
 import matching_agent
-from profile_matching import llm
-from profile_matching.rag import resume_rag
+from profile_matching import llm, providers
 from profile_matching.services import Services
 
 
@@ -90,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("jd", help="Job description text, a short request or a JD file path.")
     parser.add_argument("--resumes", required=True, help="Folder of resumes to screen.")
     parser.add_argument("--runs", type=int, default=3, help="Identical runs per model (default: 3).")
-    parser.add_argument("--models", help="Comma-separated models to compare (default: OPENAI_MODEL).")
+    parser.add_argument("--models", help="Comma-separated models to compare, as names or provider:model (default: the configured model).")
     args = parser.parse_args(argv)
     models = [m.strip() for m in (args.models or "").split(",") if m.strip()]
     if args.runs * max(1, len(models)) < 2:
@@ -99,8 +98,8 @@ def main(argv: list[str] | None = None) -> int:
         services = Services.from_settings()
         print(services.use_folder(args.resumes).summary(), file=sys.stderr)
         services.check_ready()
-    except resume_rag.CLI_ERRORS as exc:
-        print(f"Error: {resume_rag.cli_error_message(exc)}", file=sys.stderr)
+    except providers.cli_errors() as exc:
+        print(f"Error: {providers.error_message(exc)}", file=sys.stderr)
         return 1
     services.settings = dataclasses.replace(services.settings, save_reports=False)
 

@@ -1,9 +1,6 @@
-import json
 from datetime import date
 from pathlib import Path
-from types import SimpleNamespace
 
-import openai
 import pytest
 
 from profile_matching.rag import resume_rag
@@ -298,23 +295,23 @@ def test_sample_resumes_metadata():
 
 
 class FakeLLM:
-    def __init__(self, content=None, error=None):
-        self.calls = []
-        self._content = content
-        self._error = error
-        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+    """A metadata fallback answering ``values`` (or raising ``error``), recording each call."""
 
-    def _create(self, **kwargs):
-        self.calls.append(kwargs)
+    def __init__(self, values=None, error=None):
+        self.calls = []
+        self._values = values
+        self._error = error
+
+    def __call__(self, schema, system, text):
+        self.calls.append((schema, system, text))
         if self._error:
             raise self._error
-        message = SimpleNamespace(content=json.dumps(self._content))
-        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+        return self._values
 
 
 def test_llm_not_called_when_rules_find_everything():
     llm = FakeLLM({})
-    _meta(SAMPLE, llm_client=llm)
+    _meta(SAMPLE, llm=llm)
     assert llm.calls == []
 
 
@@ -327,7 +324,7 @@ def test_llm_fills_only_missing_fields():
             "highest_degree": None,
         }
     )
-    meta = _meta(text, llm_client=llm, llm_model="test-model")
+    meta = _meta(text, llm=llm)
 
     assert meta["name"] == "Jane Roe"
     assert meta["education"] == ["MSc Physics, Oxford, 2019"]
@@ -335,28 +332,21 @@ def test_llm_fills_only_missing_fields():
     assert meta["experience_years"] == 2.0  # from rules, not asked
     assert meta["llm_fields"] == ["name", "education"]
 
-    (call,) = llm.calls
-    assert call["model"] == "test-model"
-    schema = call["response_format"]["json_schema"]["schema"]
+    ((schema, _, sent),) = llm.calls
     assert sorted(schema["properties"]) == ["education", "highest_degree", "name"]
+    assert schema["required"] == list(schema["properties"]) and sent == text
 
 
 def test_llm_invalid_values_are_ignored():
     llm = FakeLLM({"name": "", "experience_years": -3, "education": []})
-    meta = _meta("hello world", resume_path="cv_bob_stone.txt", llm_client=llm)
+    meta = _meta("hello world", resume_path="cv_bob_stone.txt", llm=llm)
     assert meta["llm_fields"] == []
     assert meta["name"] == "Bob Stone"
     assert meta["experience_years"] is None
 
 
 def test_llm_error_is_logged_not_raised(caplog):
-    error = openai.APIConnectionError(request=SimpleNamespace(method="POST", url="x"))
-    meta = _meta("hello world", resume_path="x/resume_ann_lee.pdf", llm_client=FakeLLM(error=error))
+    llm = FakeLLM(error=resume_rag.MetadataLLMError("could not reach the OpenAI API."))
+    meta = _meta("hello world", resume_path="x/resume_ann_lee.pdf", llm=llm)
     assert meta["name"] == "Ann Lee"
     assert "LLM metadata fallback failed" in caplog.text
-
-
-def test_make_llm_client_without_key_returns_none(monkeypatch):
-    monkeypatch.setattr(resume_rag, "load_dotenv", lambda: None)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    assert resume_rag.make_llm_client() is None

@@ -6,23 +6,13 @@ from profile_matching.config import Settings
 from profile_matching.schemas import SkillRequirement
 from tests.fakes import FakeChatModel
 
-ENV_VARS = ("OPENAI_MODEL", "OPENAI_TEMPERATURE", "OPENAI_TIMEOUT", "OPENAI_MAX_RETRIES", "CHROMA_DB_DIR",
-            "REPORTS_DIR", "SHORTLIST_SIZE", "SCREENING_ROUNDS", "SAVE_REPORTS", "OPENAI_RESPONSES_API",
-            "UPLOADS_DIR", "EMBEDDER", "PROFILE_MATCH_HOME", "SESSIONS_DB")
-
-
-@pytest.fixture
-def clean_env(monkeypatch):
-    for name in ENV_VARS:
-        monkeypatch.delenv(name, raising=False)
-    return monkeypatch
-
 
 def test_settings_defaults(clean_env):
     assert Settings.from_env() == Settings()
 
 
 def test_settings_from_env(clean_env):
+    # The older OPENAI_ names still configure the (default) OpenAI provider.
     clean_env.setenv("OPENAI_MODEL", "gpt-test")
     clean_env.setenv("OPENAI_TEMPERATURE", "0.3")
     clean_env.setenv("OPENAI_TIMEOUT", "5")

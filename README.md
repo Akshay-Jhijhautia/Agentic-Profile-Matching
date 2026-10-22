@@ -24,7 +24,9 @@ you> Write 3 interview questions for the top candidate
 
 ## Installation
 
-Requires Python 3.11+ and an OpenAI API key.
+Requires Python 3.11+ and a chat model: OpenAI by default, or Anthropic,
+Google Gemini, a local Ollama server or any OpenAI-compatible server (see
+[Chat model providers](#chat-model-providers)).
 
 ```bash
 pip install "profile-match[ocr] @ git+https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching.git"
@@ -38,7 +40,7 @@ leave it out if all your resumes have a text layer. To work on the code:
 git clone --depth 1 https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching.git
 cd Agentic-Profile-Matching
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt     # the package in editable mode, with OCR and dev tools
+pip install -r requirements.txt     # editable install with OCR, dev tools and every provider
 ```
 
 Or run it in Docker (see [Docker](#docker)).
@@ -103,7 +105,8 @@ docker run --rm -it -e OPENAI_API_KEY \
 ```
 
 The image includes OCR, with its models downloaded at build time, and runs as
-a non-root user. `/data` keeps indexes, uploads and sessions between runs;
+a non-root user. For another provider, build with its extra
+(`--build-arg EXTRAS=ocr,anthropic`) and pass its settings with `-e`. `/data` keeps indexes, uploads and sessions between runs;
 `/work` is your folder of resumes and job descriptions, where reports are
 written.
 
@@ -292,6 +295,9 @@ python -m scripts.stability_check tests/fixtures/job_descriptions/frontend_react
     --resumes /tmp/sample_resumes --runs 2 --models gpt-5.6-terra,gpt-6-luna
 ```
 
+`--models` also takes `provider:model`, to compare providers
+(`--models gpt-5.6-terra,anthropic:claude-opus-5-5`).
+
 ## Iterative refinement
 
 "Make Kubernetes a must-have", "5+ years of React instead", "drop the degree
@@ -392,16 +398,47 @@ you> Write 3 interview questions for the top candidate
    conventions did you establish…
 ```
 
+## Chat model providers
+
+One chat model runs every LLM step: requirement extraction, deep review,
+rationales, the assistant and the indexer's metadata fallback. Pick it with
+`LLM_PROVIDER` and `LLM_MODEL`:
+
+| `LLM_PROVIDER` | Install | Key | Default `LLM_MODEL` |
+| --- | --- | --- | --- |
+| `openai` (default) | included | `OPENAI_API_KEY` | `gpt-5.6-terra` |
+| `anthropic` | `pip install 'profile-match[anthropic]'` | `ANTHROPIC_API_KEY` | `claude-opus-5-5` |
+| `google` | `pip install 'profile-match[google]'` | `GOOGLE_API_KEY` or `GEMINI_API_KEY` | `gemini-3.1-pro` |
+| `ollama` | `pip install 'profile-match[ollama]'` | none | none: set it, e.g. `qwen3:32b` |
+
+Any OpenAI-compatible server (vLLM, LM Studio, OpenRouter, xAI, ...) works
+through `openai` with `LLM_BASE_URL`; put its key, if it needs one, in
+`LLM_API_KEY`, so your `OPENAI_API_KEY` is never sent to it:
+
+```bash
+LLM_BASE_URL=http://localhost:8000/v1 LLM_MODEL=llama-3.3-70b profile-match chat
+```
+
+Provider differences are handled in `profile_matching/providers.py`: Claude
+gets no temperature and uses its native structured outputs, OpenAI's reasoning
+models use the Responses API, and errors name the provider and the setting to
+fix. Embeddings are separate: the default `EMBEDDER=openai` still needs
+`OPENAI_API_KEY`, so with another provider and no OpenAI key, use
+`EMBEDDER=hashing`. Only OpenAI has been tested end to end with live calls; the
+other providers are covered by offline tests.
+
 ## Configuration
 
 | Variable | Default | Used for |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | — | Chat model and embeddings |
-| `OPENAI_MODEL` | `gpt-5.6-terra` | Every LLM step (extraction, deep review, rationales, assistant) and the indexer's metadata fallback |
-| `OPENAI_RESPONSES_API` | `true` | OpenAI's Responses API, required for tool calling with reasoning models |
+| `LLM_PROVIDER` / `LLM_MODEL` | `openai` / provider default | The chat model (see above) |
+| `OPENAI_API_KEY` | — | OpenAI chat model and OpenAI embeddings |
+| `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY` | — | The other providers' chat models |
+| `LLM_BASE_URL` / `LLM_API_KEY` | — | An OpenAI-compatible server or a remote Ollama server, and its key |
+| `LLM_TEMPERATURE` | provider default | Only for models that accept one (not Claude) |
+| `LLM_TIMEOUT` / `LLM_MAX_RETRIES` | `60` / `2` | Request limits |
+| `OPENAI_RESPONSES_API` | `true` (`false` with `LLM_BASE_URL`) | OpenAI's Responses API, required for tool calling with reasoning models |
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Resume and query embeddings |
-| `OPENAI_TEMPERATURE` | provider default | Only for models that accept one |
-| `OPENAI_TIMEOUT` / `OPENAI_MAX_RETRIES` | `60` / `2` | Request limits |
 | `PROFILE_MATCH_HOME` | `~/.profile-match` | Local data: indexes, uploads, sessions, `.env` |
 | `CHROMA_DB_DIR` / `UPLOADS_DIR` / `SESSIONS_DB` | under `PROFILE_MATCH_HOME` | Override one location |
 | `EMBEDDER` | `openai` | Embeddings for new folder indexes: `openai`, or `hashing` (offline, keyword overlap only) |
@@ -411,7 +448,9 @@ you> Write 3 interview questions for the top candidate
 | `SAVE_REPORTS` | `true` | Save reports after every screening |
 
 Settings come from the environment, then `./.env`, then
-`~/.profile-match/.env`. No API key? `profile-match index <folder> --embedder
+`~/.profile-match/.env`. The older `OPENAI_MODEL`, `OPENAI_TEMPERATURE`,
+`OPENAI_TIMEOUT` and `OPENAI_MAX_RETRIES` still work for the OpenAI provider.
+No API key? `profile-match index <folder> --embedder
 hashing` builds an offline index (also `EMBEDDER=hashing`) for trying `index`
 and `list`. The agent itself needs a chat model.
 
@@ -419,7 +458,7 @@ and `list`. The agent itself needs a chat model.
 
 | Path | Purpose |
 | --- | --- |
-| `pyproject.toml` | Package metadata, dependencies (`ocr` and `dev` extras) and the `profile-match` command |
+| `pyproject.toml` | Package metadata, dependencies (`ocr`, provider and `dev` extras) and the `profile-match` command |
 | `profile_matching/app.py` | The `profile-match` command line |
 | `profile_matching/agent/graph.py` | The LangGraph graph (`build_graph`, `screen`) |
 | `matching_agent.py`, `main.py` | Entry points for a source checkout (re-export the graph; run the CLI) |
@@ -438,6 +477,7 @@ and `list`. The agent itself needs a chat model.
 | `profile_matching/tools/` | Agent tools, built per `Services` by factories |
 | `profile_matching/cli.py` | Rich terminal chat driving the human feedback loop |
 | `profile_matching/llm.py` | The single path to the chat model: `structured(...)`, `with_tools(...)` |
+| `profile_matching/providers.py` | Chat model providers: how each is built, its key, its quirks, its error messages |
 | `profile_matching/schemas.py` | Pydantic models shared across the agent |
 | `profile_matching/prompts.py` | All prompt templates |
 | `profile_matching/services.py`, `candidates.py`, `config.py`, `markdown.py` | Shared dependencies, candidate lookup, settings, Markdown helpers |
@@ -507,14 +547,13 @@ built with a hashing embedder. It covers:
 
 ## Limitations
 
-- **One provider.** Only OpenAI is wired up (chat and embeddings), and
-  different models can still disagree on candidates near the hire threshold.
-  Next steps:
-  - a provider-agnostic chat layer;
+- **Embeddings still need OpenAI** (or the keyword-only hashing embedder),
+  whichever chat provider is used.
+- **Models can disagree** on candidates near the hire threshold, and only
+  OpenAI's models have been measured (see the stability check). Next steps:
   - local embeddings;
   - letting rules decide or recruiters confirm the extracted requirements;
   - a reproducibility cache for LLM outputs.
-- **Conversations live in memory** and end with the process.
 - **Heuristic skill years.** A skill's years come from the dated roles that
   mention it, so skills listed only in a Skills section are "unverified".
 - **Blind screening isn't implemented.** Names and contact details reach the

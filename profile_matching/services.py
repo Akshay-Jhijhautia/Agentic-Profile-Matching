@@ -12,30 +12,23 @@ resume files (uploaded into a batch folder); ``rag``, ``matcher`` and
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from langchain_core.language_models import BaseChatModel
 
-from . import pools
+from . import pools, providers
 from .candidates import CandidateDirectory
 from .config import Settings, get_settings
 from .pools import IntakeReport, ResumePool
 from .rag import job_matcher, resume_rag
 
 
-MISSING_KEY = (
-    "OPENAI_API_KEY is not set. Export it, or put OPENAI_API_KEY=... in a .env file "
-    "in this folder or in ~/.profile-match/.env."
-)
-
-
 @dataclass
 class Services:
     pool: ResumePool | None = None
     settings: Settings = field(default_factory=get_settings)
-    # None means ``llm.get_chat_model()``, the configured OpenAI model.
+    # None means ``llm.get_chat_model()``, the configured provider's model.
     model: BaseChatModel | None = None
 
     def _active(self) -> ResumePool:
@@ -78,17 +71,22 @@ class Services:
         return replace(report, folder=pools.UPLOADS_LABEL), target
 
     def check_ready(self, require_resumes: bool = True) -> None:
-        """Raise ``ValueError`` with a fix when the API key is missing or, if required, when
-        no readable resumes are loaded."""
-        if self.model is None and not os.getenv("OPENAI_API_KEY"):
-            raise ValueError(MISSING_KEY)
+        """Raise ``ValueError`` with a fix when an API key is missing (the chat model's, or
+        OpenAI's for an index built with OpenAI embeddings) or, if required, when no
+        readable resumes are loaded."""
+        if self.model is None:
+            key = providers.missing_key(providers.required_key_vars(self.settings))
+            if key:
+                raise ValueError(providers.missing_key_message(key, f"needed for {self.settings.model_label}"))
         if self.pool is None and not require_resumes:
             return
         pool = self._active()
         if pool.rag.collection.count() == 0:
             raise ValueError(f"No readable resumes in {resume_rag.display_path(str(pool.folder))}.")
         if resume_rag.missing_api_key(pool.rag.embedder_name):
-            raise ValueError(MISSING_KEY)
+            raise ValueError(providers.missing_key_message(
+                "OPENAI_API_KEY", "this folder's index uses OpenAI embeddings; EMBEDDER=hashing avoids them for new folders"
+            ))
 
     @classmethod
     def from_settings(cls, settings: Settings | None = None) -> Services:

@@ -24,6 +24,7 @@ from functools import cached_property
 from pathlib import Path
 
 from .candidates import CandidateDirectory
+from . import llm
 from .config import Settings
 from .rag import job_matcher, resume_rag
 
@@ -146,7 +147,7 @@ class ResumePool:
         # Otherwise None: a new pool uses OpenAI embeddings (created lazily, so a missing key
         # is reported by ``Services.check_ready``), an existing one the embedder that built it.
         rag = resume_rag.ResumeRAG(
-            settings.db_dir, embedder=embedder, llm_client=resume_rag.make_llm_client(),
+            settings.db_dir, embedder=embedder, metadata_llm=llm.metadata_fallback(),
             collection_name=pool_name(path), collection_metadata={"folder": str(path)},
         )
         return cls(path, rag)

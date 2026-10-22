@@ -1,2 +1,2 @@
 # Dependencies are declared once, in pyproject.toml. For development:
--e .[ocr,dev]
+-e .[ocr,dev,anthropic,google,ollama]

@@ -38,3 +38,17 @@ def services(fixture_pool_db, tmp_path) -> Services:
     settings = Settings(db_dir=fixture_pool_db, reports_dir=str(tmp_path / "reports"), embedder="hashing",
                         uploads_dir=str(tmp_path / "uploads"))
     return Services(pool=ResumePool.open(RESUMES_DIR, settings), settings=settings)
+
+
+# Settings read from the environment; cleared so a developer's .env cannot leak into tests.
+ENV_VARS = ("OPENAI_MODEL", "OPENAI_TEMPERATURE", "OPENAI_TIMEOUT", "OPENAI_MAX_RETRIES", "CHROMA_DB_DIR",
+            "REPORTS_DIR", "SHORTLIST_SIZE", "SCREENING_ROUNDS", "SAVE_REPORTS", "OPENAI_RESPONSES_API",
+            "UPLOADS_DIR", "EMBEDDER", "PROFILE_MATCH_HOME", "SESSIONS_DB", "LLM_PROVIDER", "LLM_MODEL",
+            "LLM_TEMPERATURE", "LLM_TIMEOUT", "LLM_MAX_RETRIES", "LLM_BASE_URL", "LLM_API_KEY")
+
+
+@pytest.fixture
+def clean_env(monkeypatch):
+    for name in ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+    return monkeypatch

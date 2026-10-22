@@ -20,8 +20,8 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from .agent.text import last_ai_text
+from . import providers
 from .pools import IntakeReport
-from .rag import resume_rag
 from .sessions import config_for, new_session_id
 
 # Graph steps allowed per user message (a tool loop is two steps per call).
@@ -124,8 +124,8 @@ class ChatSession:
             with self.console.status("Working…"):
                 for update in self.graph.stream(payload, self.config, stream_mode="updates"):
                     self._render(update)
-        except resume_rag.CLI_ERRORS as exc:
-            self._recover(resume_rag.cli_error_message(exc))
+        except providers.cli_errors() as exc:
+            self._recover(providers.error_message(exc))
         self.finished = not self.graph.get_state(self.config).next
 
     def _recover(self, error: str) -> None:

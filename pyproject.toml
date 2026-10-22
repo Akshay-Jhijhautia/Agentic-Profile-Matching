@@ -37,6 +37,10 @@ dependencies = [
 [project.optional-dependencies]
 # Scanned PDFs and image resumes (about 230 MB installed)
 ocr = ["rapidocr>=3.10,<4", "onnxruntime>=1.20", "pypdfium2>=4.30"]
+# Chat model providers besides OpenAI (LLM_PROVIDER=anthropic|google|ollama)
+anthropic = ["langchain-anthropic>=1.7,<2"]
+google = ["langchain-google-genai>=4.4,<5"]
+ollama = ["langchain-ollama>=1.1,<2"]
 # Tests and development tools (sample resume generator)
 dev = ["pytest>=8.0", "pyflakes>=3.2", "fpdf2>=2.7", "pillow>=10.1"]
 

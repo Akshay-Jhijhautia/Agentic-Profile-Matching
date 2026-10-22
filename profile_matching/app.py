@@ -22,7 +22,7 @@ from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from . import __version__, cli, maintenance, pools, sessions
+from . import __version__, cli, maintenance, pools, providers, sessions
 from .agent.graph import build_graph, screen
 from .config import get_settings
 from .rag import resume_rag
@@ -104,7 +104,7 @@ def _chat(services: Services, paths: list[str] | None, session_id: str | None) -
         initial = {"resume_folder": report.folder, "pool_folder": str(services.pool.folder),
                    "upload_folder": str(uploaded_to) if uploaded_to else None}
     services.check_ready(require_resumes=False)
-    return cli.run(graph, services.settings.llm_model, report=report, initial_state=initial, session_id=session_id)
+    return cli.run(graph, services.settings.model_label, report=report, initial_state=initial, session_id=session_id)
 
 
 # --- folders ------------------------------------------------------------------------------------------
@@ -212,8 +212,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         return handler(rest)
-    except resume_rag.CLI_ERRORS as exc:
-        print(f"Error: {resume_rag.cli_error_message(exc)}", file=sys.stderr)
+    except providers.cli_errors() as exc:
+        print(f"Error: {providers.error_message(exc)}", file=sys.stderr)
         return 1
 
 
@@ -221,6 +221,6 @@ def agent_main(argv: list[str] | None = None, mode: str = "auto") -> int:
     """``python matching_agent.py``: chat, or screen when a JD is given."""
     try:
         return run_agent(argv, mode)
-    except resume_rag.CLI_ERRORS as exc:
-        print(f"Error: {resume_rag.cli_error_message(exc)}", file=sys.stderr)
+    except providers.cli_errors() as exc:
+        print(f"Error: {providers.error_message(exc)}", file=sys.stderr)
         return 1

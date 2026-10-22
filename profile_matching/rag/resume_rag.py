@@ -18,6 +18,7 @@ import os
 import re
 from collections import defaultdict
 from datetime import date
+from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
@@ -25,13 +26,11 @@ import chromadb
 import openai
 from chromadb.config import Settings
 from chromadb.errors import NotFoundError
-from dotenv import load_dotenv
 
 from . import fs_tools, skills_vocab
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_LLM_MODEL = "gpt-5.6-terra"
 LLM_MAX_INPUT_CHARS = 12000
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 EMBED_BATCH_SIZE = 100
@@ -551,36 +550,31 @@ _LLM_FIELD_SCHEMAS = {
 }
 
 
-def make_llm_client() -> openai.OpenAI | None:
-    """An OpenAI client if ``OPENAI_API_KEY`` is configured, else ``None`` (no fallback)."""
-    load_dotenv()
-    return openai.OpenAI() if os.getenv("OPENAI_API_KEY") else None
+_LLM_SYSTEM = (
+    "Extract the requested fields from the resume. "
+    "Use null (or an empty list) when the resume does not state a value."
+)
+
+# A chat model asked for JSON: ``(json_schema, system_prompt, resume_text) -> values``.
+# It raises ``MetadataLLMError`` when the call fails.
+MetadataLLM = Callable[[dict, str, str], dict]
 
 
-def _llm_extract(text: str, fields: list[str], client, model: str) -> dict:
+class MetadataLLMError(RuntimeError):
+    """The metadata fallback's model call failed (the rule-based values are kept)."""
+
+
+def metadata_schema(fields: list[str]) -> dict:
+    """JSON schema asking for ``fields`` only."""
     properties = {f: _LLM_FIELD_SCHEMAS[f] for f in fields}
-    schema = {
+    return {
+        "title": "resume_metadata",
+        "description": "Resume fields the rule-based parser could not find.",
         "type": "object",
         "properties": properties,
         "required": list(properties),
         "additionalProperties": False,
     }
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {
-                "role": "system",
-                "content": "Extract the requested fields from the resume. "
-                "Use null (or an empty list) when the resume does not state a value.",
-            },
-            {"role": "user", "content": text[:LLM_MAX_INPUT_CHARS]},
-        ],
-        response_format={
-            "type": "json_schema",
-            "json_schema": {"name": "resume_metadata", "strict": True, "schema": schema},
-        },
-    )
-    return json.loads(response.choices[0].message.content)
 
 
 def _apply_llm_values(metadata: dict, values: dict) -> list[str]:
@@ -611,15 +605,14 @@ def _apply_llm_values(metadata: dict, values: dict) -> list[str]:
 def extract_metadata(
     text: str,
     resume_path: str = "",
-    llm_client=None,
-    llm_model: str | None = None,
+    llm: MetadataLLM | None = None,
     today: date | None = None,
 ) -> dict:
     """Extract searchable metadata from resume text.
 
     Fields are parsed with rules first. If ``name``, ``experience_years`` or
-    ``education`` is still missing and ``llm_client`` is given, one OpenAI
-    structured-output call fills only the missing fields. A name that is still
+    ``education`` is still missing and ``llm`` is given, one structured-output
+    call fills only the missing fields. A name that is still
     missing falls back to the file name.
 
     Returns ``{"name", "email", "skills", "experience_years", "skill_years",
@@ -645,13 +638,12 @@ def extract_metadata(
     missing = [f for f in ("name", "experience_years", "education") if not metadata[f]]
     if metadata["experience_years"] == 0:
         missing.remove("experience_years")  # parsed, just no experience yet
-    if missing and llm_client is not None:
+    if missing and llm is not None:
         fields = missing + (["highest_degree"] if "education" in missing else [])
-        model = llm_model or os.getenv("OPENAI_MODEL") or DEFAULT_LLM_MODEL
         try:
-            values = _llm_extract(text, fields, llm_client, model)
+            values = llm(metadata_schema(fields), _LLM_SYSTEM, text[:LLM_MAX_INPUT_CHARS])
             metadata["llm_fields"] = _apply_llm_values(metadata, values)
-        except (openai.OpenAIError, json.JSONDecodeError, AttributeError, IndexError) as exc:
+        except MetadataLLMError as exc:
             logger.warning("LLM metadata fallback failed for %s: %s", resume_path or "resume", exc)
 
     if not metadata["name"]:
@@ -799,13 +791,13 @@ class ResumeRAG:
         self,
         persist_dir: str = DEFAULT_DB_DIR,
         embedder: Embedder | None = None,
-        llm_client=None,
+        metadata_llm: MetadataLLM | None = None,
         collection_name: str = COLLECTION_NAME,
         reset: bool = False,
         collection_metadata: dict | None = None,
     ):
         self.persist_dir = persist_dir
-        self.llm_client = llm_client
+        self.metadata_llm = metadata_llm
         self._embedder = embedder
         self._collection_metadata = collection_metadata or {}
         self._client = chromadb.PersistentClient(
@@ -899,7 +891,7 @@ class ResumeRAG:
         number of chunks written.
         """
         path, content = resume["path"], resume["content"]
-        meta = extract_metadata(content, path, llm_client=self.llm_client)
+        meta = extract_metadata(content, path, llm=self.metadata_llm)
         chunks = chunk_resume(content, meta["name"], path)
         if not chunks:
             logger.warning("No content to index in %s", path)
@@ -980,24 +972,6 @@ def display_path(path: str) -> str:
         except ValueError:
             continue
     return path
-
-
-# Expected failures reported as one line instead of a traceback
-# (EmbedderMismatchError is a ValueError).
-CLI_ERRORS = (FileNotFoundError, NotADirectoryError, ValueError, openai.OpenAIError)
-
-
-def cli_error_message(exc: Exception) -> str:
-    """A one-line explanation of an expected CLI failure."""
-    if isinstance(exc, openai.AuthenticationError):
-        return "authentication failed. Check OPENAI_API_KEY."
-    if isinstance(exc, openai.RateLimitError):
-        return f"rate limited or out of quota: {exc}"
-    if isinstance(exc, openai.APIConnectionError):
-        return "could not reach the OpenAI API. Check your connection."
-    if isinstance(exc, openai.OpenAIError):
-        return f"OpenAI API error: {exc}"
-    return str(exc)
 
 
 def missing_api_key(embedder_name: str) -> bool:

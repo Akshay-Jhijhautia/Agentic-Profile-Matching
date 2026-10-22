@@ -6,8 +6,13 @@
 #       profile-match chat --resumes ./applicants
 #
 # /data keeps indexes, uploads and sessions between runs; /work is the folder
-# with your resumes and job descriptions, where reports are written.
+# with your resumes and job descriptions, where reports are written. For another
+# chat provider, add its extra and pass its settings:
+#   docker build --build-arg EXTRAS=ocr,anthropic -t profile-match .
+#   docker run ... -e LLM_PROVIDER=anthropic -e ANTHROPIC_API_KEY -e EMBEDDER=hashing ...
 FROM python:3.13-slim
+
+ARG EXTRAS=ocr
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -19,7 +24,7 @@ WORKDIR /opt/profile-match
 COPY pyproject.toml README.md ./
 COPY profile_matching ./profile_matching
 # Install with OCR, and download its models now so the container works offline.
-RUN pip install ".[ocr]" \
+RUN pip install ".[${EXTRAS}]" \
     && python -c "from profile_matching.rag import ocr; ocr._engine()"
 
 RUN useradd --create-home --uid 1000 recruiter \
