@@ -50,7 +50,7 @@ def test_local_embedder_adds_each_models_prefixes(engine):
 
 
 def test_every_local_model_is_calibrated():
-    # An uncalibrated model would put match scores (and hire decisions) on another scale.
+    # An uncalibrated model would put match scores (and interview recommendations) on another scale.
     for model in resume_rag.LOCAL_MODELS:
         assert f"local:{model}" in job_matcher.SEMANTIC_RANGES, model
     low, high = job_matcher.SEMANTIC_RANGES["local:ibm-granite/granite-embedding-small-english-r2"]

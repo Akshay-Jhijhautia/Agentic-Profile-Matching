@@ -40,7 +40,7 @@ REQUIRED_SKILL_BOOST = 2
 # text-embedding-3-small the sample JD/resume pairs measured 0.34 (unrelated) to
 # 0.62 (near-perfect fit). Local models' ranges were fitted so the candidates that
 # reach the shortlist (each query's top 5) score as they do with OpenAI, keeping the
-# hire threshold meaningful; see ``scripts/ranking_eval.py``.
+# interview threshold meaningful; see ``scripts/ranking_eval.py``.
 SEMANTIC_RANGES = {
     "openai": (0.30, 0.65),
     "hashing": (0.0, 0.50),

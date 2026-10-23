@@ -102,7 +102,7 @@ class PipelineNodes:
         return {"assessments": {screening.assessment_key(self.services.pool.id, requirements, match.id): assessment}}
 
     def finalize_ranking(self, state: AgentState) -> dict:
-        """Re-rank the shortlist by final score (round 2), then decide hire or no-hire (round 3)."""
+        """Re-rank the shortlist by final score (round 2), then recommend interviews (round 3)."""
         rounds, requirements = self.services.settings.screening_rounds, state["requirements"]
         shortlist = state["shortlist"]
         if rounds >= 2:
@@ -114,7 +114,7 @@ class PipelineNodes:
         return {"shortlist": shortlist}
 
     def suggest_improvements(self, state: AgentState) -> dict:
-        """Borderline candidates: what would turn them into a clear hire (needs round 2)."""
+        """Borderline candidates: what would make them a clear interview (needs round 2)."""
         if not any(match.borderline for match in state["shortlist"]):
             return {}
         return {"shortlist": screening.suggest_improvements(self.services, state["requirements"], state["shortlist"])}

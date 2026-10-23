@@ -131,8 +131,9 @@ def _recommendation_summary(shortlist: list[CandidateMatch]) -> list[str]:
     decided = [m for m in shortlist if m.recommendation is not None]
     if not decided:
         return []
-    hires = [m.name for m in decided if m.recommendation.decision == "hire"]
-    sentences = [f"Recommended to advance: {join(hires)}." if hires else "No candidate is recommended to advance."]
+    advance = [m.name for m in decided if m.recommendation.decision == "interview"]
+    sentences = [f"Recommended for interview: {join(advance)}." if advance
+                 else "No candidate is recommended for interview."]
     borderline = [f"{m.name} ({m.final_score})" for m in shortlist if m.borderline]
     if borderline:
         sentences.append(f"Borderline: {join(borderline)}.")

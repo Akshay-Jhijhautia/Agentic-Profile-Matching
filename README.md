@@ -1,7 +1,11 @@
-# Agentic Profile Matching
+# Profile Match
+
+**An open-source, explainable resume-screening assistant. It ranks and
+explains; the recruiter decides.**
 
 A LangGraph agent that screens resumes against a job description, explains every
-ranking it makes, and refines the search through conversation. It is built on a
+ranking it makes, recommends whom to interview, and refines the search through
+conversation (see [Responsible use](#responsible-use)). It is built on a
 retrieval engine (`profile_matching/rag/`):
 - file tools that read PDF, DOCX and text resumes;
 - a local index of resumes chunked by section (SQLite, exact search with NumPy), with extracted skills, experience and education;
@@ -10,7 +14,7 @@ retrieval engine (`profile_matching/rag/`):
 
 ```
 you> Find me candidates with React and 3+ years experience
-Screened 100 resumes; 10 pass every must-have. Deep analysis of 10 in parallel. Final round: hire / no-hire.
+Screened 100 resumes; 10 pass every must-have. Deep analysis of 10 in parallel. Final round: interview or not now.
 you> Compare the top 3 matches side by side
 you> Why did the top candidate rank higher than the second?
 you> Make TypeScript a must-have
@@ -215,8 +219,8 @@ with the compiled graph.
 | `search_resumes` | **Round 1**: scores and checks every indexed resume |
 | `rank_candidates` | Keeps the best `SHORTLIST_SIZE` candidates who pass every must-have |
 | `assess_candidate` | **Round 2**, one per shortlisted candidate in parallel (`Send`): deep review of the full resume |
-| `finalize_ranking` | Re-ranks by final score, then **round 3**: hire / no-hire by rule, rationale by the model |
-| `suggest_improvements` | Borderline candidates: what would make them a clear hire |
+| `finalize_ranking` | Re-ranks by final score, then **round 3**: recommend interview or not now, by rule; rationale by the model |
+| `suggest_improvements` | Borderline candidates: what would make them a clear interview |
 | `explain_changes` | After a refinement: what changed in the requirements and the ranking, and why |
 | `generate_report` | Shortlist report and chat summary; saves all reports |
 | `assistant` ⇄ `tools` | Tool-calling loop for questions, comparisons, explanations, interview questions |
@@ -301,7 +305,7 @@ candidate's whole career is shorter than the years required.
 | --- | --- | --- |
 | **1. Initial screen** | Every resume (100) gets the hybrid retrieval score (semantic 50% + BM25 keyword 20% + must-have skill coverage 30%) and the must-have checks. The best 10 passing candidates go on | none |
 | **2. Deep analysis** | The model reviews each shortlisted resume in parallel, giving a verdict per requirement with a verbatim quote. Code checks the verdicts and computes the **deep score**. Final score = **0.6 × deep + 0.4 × retrieval** | one per candidate, cached |
-| **3. Final decision** | A fixed rule decides hire / no-hire and its confidence. One call writes the rationales. Final scores 60–74 are **borderline** and get improvement suggestions | two for the cohort |
+| **3. Recommendation** | A fixed rule recommends an interview or not now, with a confidence. One call writes the rationales. Final scores 60–74 are **borderline** and get improvement suggestions | two for the cohort |
 
 A full three-round screen of 100 resumes takes about 40 seconds with
 `gpt-5.6-terra`, almost all of it the parallel deep reviews.
@@ -318,7 +322,7 @@ run (`profile_matching/guardrails.py`):
 | **Rubric scoring.** The model returns only categorical verdicts (strong / partial / missing). Code computes the deep score: must-haves 70%, nice-to-haves 30%; strong 1, partial 0.5, missing 0; minus risk penalties (low 2, medium 5, high 10, at most 20) | Free-form scores drifting between runs and models |
 | **Evidence grounding.** Every verdict cites a verbatim quote, and code checks it is in the resume. A quote that isn't downgrades the verdict | Credit for invented experience |
 | **Facts bound verdicts.** A must-have that round 1 *measured* as met (years, experience, degree) counts as strong; an unverified one counts as exactly partial; a listed skill can't be missing | The model contradicting what code measured |
-| **Decision rule.** Hire when final ≥ 75, no must-have missing and no high-severity risk. Confidence comes from the margin and evidence quality. The model only explains | Different hiring decisions for the same evidence |
+| **Decision rule.** Recommend an interview when final ≥ 75, no must-have missing and no high-severity risk. Confidence comes from the margin and evidence quality. The model only explains | Different recommendations for the same evidence |
 | **Stable search text.** The semantic query is rendered only from the structured requirements, never from model-written prose | Rewording reordering the shortlist |
 | **Prompt-injection defence.** Resume text is marked as untrusted data in every prompt, and code flags instruction-like text ("ignore previous instructions…") as a high-severity risk | A resume steering its own evaluation |
 | **Validated, retried output.** Every structured answer is validated against its schema and retried once with the error | Malformed answers breaking the pipeline |
@@ -334,10 +338,10 @@ produced it.
 | --- | --- | --- | --- |
 | Deep-score spread for one candidate across runs | up to 24 points | mean 6.5 | mean 2.1 |
 | Same top 10 across runs | – | 100% | 100% |
-| Same hire / no-hire decisions across runs | – | 100% | 100% |
+| Same interview recommendations across runs | – | 100% | 100% |
 
 Across both models on the frontend JD, the ranking was identical (Kendall tau
-1.0) and 2 of 3 hire decisions matched. The candidate sitting at the threshold
+1.0) and 2 of 3 interview recommendations matched. The candidate sitting at the threshold
 differed.
 
 ```bash
@@ -352,7 +356,7 @@ python -m scripts.stability_check tests/fixtures/job_descriptions/frontend_react
 
 ## Reproducible results
 
-Every structured model answer (requirements, deep reviews, hire rationales,
+Every structured model answer (requirements, deep reviews, recommendation rationales,
 improvement suggestions, comparisons, interview questions, routing) is stored
 in `llm_cache.sqlite`, keyed by everything that shapes it: provider, model,
 temperature, output schema, the full prompt and the input. Asking the same
@@ -442,7 +446,7 @@ Starting a new search…
 Must have: React (3+ yrs)
 Screened 100 resumes; 10 pass every must-have.
 Deep analysis of anika_laurent: 100        (… 10 in parallel)
-Final round: 8 hire, 2 no hire.
+Final round: 8 recommended for interview, 2 not now.
 [Shortlist report]
 Screened 100 resumes for React Developer: 10 meet every must-have. Top matches: Anika Laurent (90),
 Ethan Khan (89), … Reports saved to reports/react-developer-20261022-151949.
@@ -523,10 +527,10 @@ queries (`scripts/ranking_eval.py`):
 
 Each model's similarities are mapped onto OpenAI's score scale
 (`job_matcher.SEMANTIC_RANGES`, fitted on the candidates who reach the
-shortlist), so the hire threshold keeps its meaning. Only calibrated models can
+shortlist), so the interview threshold keeps its meaning. Only calibrated models can
 be selected. In a live comparison on 17 job descriptions, with requirements and
-deep reviews held fixed, 67 of 69 hire decisions were the same; the two that
-differed sat on the hire line (final 75–76 with OpenAI, 73–74 locally), the
+deep reviews held fixed, 67 of 69 recommendations were the same; the two that
+differed sat on the threshold (final 75–76 with OpenAI, 73–74 locally), the
 kind of candidate a second run with the same model can also flip.
 
 `EMBEDDER=openai` uses OpenAI embeddings instead (needs `OPENAI_API_KEY`), and
@@ -552,7 +556,7 @@ other embeddings is re-indexed automatically the next time it is used.
 | `INDEX_DIR` / `UPLOADS_DIR` / `SESSIONS_DB` | under `PROFILE_MATCH_HOME` | Override one location (`CHROMA_DB_DIR` still works for `INDEX_DIR`) |
 | `REPORTS_DIR` | `reports` | Where reports are saved; the only directory the agent may write to |
 | `SHORTLIST_SIZE` | `10` | Candidates kept after round 1 |
-| `SCREENING_ROUNDS` | `3` | 1: retrieval only; 2: + deep analysis; 3: + hire / no-hire |
+| `SCREENING_ROUNDS` | `3` | 1: retrieval only; 2: + deep analysis; 3: + interview recommendations |
 | `SAVE_REPORTS` | `true` | Save reports after every screening |
 | `LLM_CACHE` / `LLM_CACHE_DB` | `true` / `~/.profile-match/llm_cache.sqlite` | Reuse the model's answer to a question asked before |
 
@@ -649,9 +653,39 @@ irrelevant one) for 16 queries, and compares two runs candidate by candidate.
 Replacing ChromaDB with the current store changed nothing: identical
 knockouts, rankings and scores for all 100 candidates in every query.
 
+## Responsible use
+
+Profile Match assists people who screen resumes; it does not make hiring
+decisions, and it should not be used to reject candidates without a person
+reviewing the result.
+
+- **People decide.** The tool recommends whom to interview ("Recommend
+  interview" / "Not now") with its evidence. A recruiter reviews every
+  recommendation, especially candidates near the threshold, where small
+  differences in wording or model can change the outcome.
+- **Explain, don't hide.** Every score comes with its breakdown, the resume
+  lines behind each verdict and the rule that produced the recommendation, so
+  any result can be questioned and checked.
+- **Bias.** Names, contact details and other personal details still reach the
+  model during deep analysis (blind screening is planned), and the scoring has
+  only been validated on synthetic resumes. Do not rely on it for decisions
+  until you have checked it on your own, representative data.
+- **Regulation.** Software that assists hiring decisions is regulated in some
+  places: the EU AI Act treats it as high-risk, and some jurisdictions (for
+  example New York City) require bias audits before automated screening tools
+  are used. Check what applies to you; this project provides no compliance
+  guarantees.
+- **Candidate data.** Resumes, the index, saved sessions and stored model
+  answers stay on your machine under `~/.profile-match`. Resume text is sent to
+  the chat model you configure; use a local model (Ollama) if it must not leave
+  your machine. `profile-match clean` and `profile-match cache --clear` delete
+  what is no longer needed.
+- **Candidates can game resumes.** Instruction-like text is flagged, but treat
+  any result as a starting point for a conversation, not a verdict.
+
 ## Design decisions
 
-- **The model judges, code decides.** Scores, knockouts, hire decisions and
+- **The model judges, code decides.** Scores, knockouts, recommendations and
   reports are computed. The model reads resumes, gives categorical verdicts
   with quotes and writes explanations. This is what makes results stable
   across runs and auditable.
@@ -680,10 +714,10 @@ knockouts, rankings and scores for all 100 candidates in every query.
 
 - **Embedding models disagree on details.** Calibration aligns score scales,
   but per candidate the local model and OpenAI differ by about 5 match points
-  on average (2 points of final score), more in some fields. Rankings and hire
-  decisions agreed in the comparison above; candidates on the hire line can
+  on average (2 points of final score), more in some fields. Rankings and
+  recommendations agreed in the comparison above; candidates on the threshold can
   go either way, as they can between two runs of the same model.
-- **Chat models can disagree** on candidates near the hire threshold, and only
+- **Chat models can disagree** on candidates near the interview threshold, and only
   OpenAI's models have been measured (see the stability check). Rules,
   recruiter confirmation and the answer cache make one model reproducible; a
   different model can still judge a borderline candidate differently.

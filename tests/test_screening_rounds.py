@@ -9,7 +9,7 @@ from profile_matching.schemas import (
     DEEP_WEIGHT,
     DecisionRationale,
     DeepReview,
-    HiringRationales,
+    DecisionRationales,
     Requirements,
 )
 from tests.fakes import SCREENING_RESPONSES, FakeChatModel, fake_assessment, fake_review
@@ -42,7 +42,7 @@ def test_three_rounds_review_each_candidate_then_decide_by_rule(run, services):
     shortlist = state["shortlist"]
     assert len(shortlist) == 4
     assert len(_calls(services, DeepReview)) == 4  # one deep review per candidate (in parallel)
-    assert len(_calls(services, HiringRationales)) == 1  # one call explains every decision
+    assert len(_calls(services, DecisionRationales)) == 1  # one call explains every decision
     for match in shortlist:
         # Every verdict is strong (grounded quotes), no risks: the rubric gives 100.
         assert match.assessment.deep_score == 100
@@ -77,7 +77,7 @@ def test_deep_reviews_can_reorder_the_shortlist(run):
 
 def test_round_one_only_makes_no_deep_calls(run, services):
     state = run(rounds=1)
-    assert _calls(services, DeepReview) == [] and _calls(services, HiringRationales) == []
+    assert _calls(services, DeepReview) == [] and _calls(services, DecisionRationales) == []
     assert all(m.assessment is None and m.final_score == m.match_score for m in state["shortlist"])
 
 
@@ -90,7 +90,7 @@ def test_report_and_summary_show_every_round(run):
     assert f"**Retrieval ({first.match_score}):**" in report
     assert "*(Rule: final score" in report
     summary = state["messages"][-1].text
-    assert "Recommended to advance:" in summary or "No candidate is recommended to advance." in summary
+    assert "Recommended for interview:" in summary or "No candidate is recommended for interview." in summary
 
 
 # --- caching ------------------------------------------------------------------------------------------
@@ -113,7 +113,7 @@ def test_cached_assessments_are_reused(services):
     # Same hard requirements, cache already filled: round 2 is skipped, round 3 still runs.
     again = graph.invoke({"messages": [("user", "Python backend engineer")], "assessments": state["assessments"]})
     assert len(_calls(services, DeepReview)) == 3
-    assert len(_calls(services, HiringRationales)) == 2
+    assert len(_calls(services, DecisionRationales)) == 2
     assert all(m.assessment is not None for m in again["shortlist"])
 
 
@@ -130,7 +130,7 @@ def _assessed(services, names: list[str], deep_score: int = 90):
 
 def test_rationales_are_mapped_by_id_or_name_and_never_change_the_decision(services):
     shortlist = _assessed(services, ["John Doe", "Daniel Kim", "Wei Chen"])
-    services.model = FakeChatModel({HiringRationales: HiringRationales(rationales=[
+    services.model = FakeChatModel({DecisionRationales: DecisionRationales(rationales=[
         DecisionRationale(candidate_id="john_doe", rationale="Strong Python."),
         DecisionRationale(candidate_id="Daniel Kim", rationale="Solid."),
     ])})

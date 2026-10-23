@@ -9,9 +9,9 @@
    verbatim quotes; ``guardrails`` checks them and computes the deep score.
    The shortlist is re-ranked by the final score, which blends the deep score
    with the retrieval score.
-3. Final decision: hire or no-hire by ``guardrails.decide``, a fixed rule; one
+3. Recommendation: interview or not now, by ``guardrails.decide``, a fixed rule; one
    LLM call writes the rationales. Borderline candidates then get improvement
-   suggestions: what would make them a clear hire.
+   suggestions: what would make them a clear interview.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from .schemas import (
     Assessment,
     CandidateMatch,
     DeepReview,
-    HiringRationales,
+    DecisionRationales,
     ImprovementSuggestions,
     Requirements,
 )
@@ -134,7 +134,7 @@ def by_candidate(services: Services, items: Iterable[T], ref: Callable[[T], str]
 
 
 def decide(services: Services, requirements: Requirements, shortlisted: list[CandidateMatch]) -> list[CandidateMatch]:
-    """Round 3: the decision rule decides hire or no-hire for every assessed candidate;
+    """Round 3: the decision rule recommends an interview, or not, for every assessed candidate;
     one model call then explains each decision (the rule's outcome stays if it skips one)."""
     decided = [
         match.model_copy(update={"recommendation": guardrails.decide(match)}) if match.assessment else match
@@ -144,7 +144,7 @@ def decide(services: Services, requirements: Requirements, shortlisted: list[Can
     if not with_decision:
         return decided
     payload = _cohort_payload(requirements, with_decision)
-    result = llm.structured(HiringRationales, prompts.HIRING_RATIONALES, payload, model=services.model, cache=services.llm_cache)
+    result = llm.structured(DecisionRationales, prompts.DECISION_RATIONALES, payload, model=services.model, cache=services.llm_cache)
     rationales = by_candidate(services, result.rationales, lambda r: r.candidate_id)
     return [
         match.model_copy(update={"recommendation": match.recommendation.model_copy(

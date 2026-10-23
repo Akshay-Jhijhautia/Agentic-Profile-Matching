@@ -4,7 +4,7 @@ One-shot (``conversational=False``):
 
     START → parse_jd → extract_requirements → search_resumes (round 1: all resumes)
           → rank_candidates (top N) → assess_candidate ×N in parallel (round 2)
-          → finalize_ranking (re-rank + round 3 hire/no-hire)
+          → finalize_ranking (re-rank + round 3: interview or not now)
           → suggest_improvements (borderline candidates) → generate_report → END
 
 Conversational (``conversational=True``), with a human feedback loop:

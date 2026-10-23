@@ -40,9 +40,9 @@ def must_have_cell(match: CandidateMatch) -> str:
 
 
 def decision_cell(match: CandidateMatch) -> str:
-    """"✅ hire (high)", "❌ no hire (low) · borderline", or "–" before round 3."""
+    """"✅ interview (high)", "❌ not now (low) · borderline", or "–" before round 3."""
     rec = match.recommendation
-    text = "–" if rec is None else f"{'✅ hire' if rec.decision == 'hire' else '❌ no hire'} ({rec.confidence})"
+    text = "–" if rec is None else f"{'✅ interview' if rec.decision == 'interview' else '❌ not now'} ({rec.confidence})"
     return f"{text} · borderline" if match.borderline else text
 
 
@@ -50,8 +50,7 @@ def recommendation_line(match: CandidateMatch) -> str | None:
     rec = match.recommendation
     if rec is None:
         return None
-    verdict = "Hire" if rec.decision == "hire" else "No hire"
-    return f"**Recommendation:** {verdict} ({rec.confidence} confidence). {rec.rationale} *(Rule: {rec.rule}.)*"
+    return f"**Recommendation:** {rec.label} ({rec.confidence} confidence). {rec.rationale} *(Rule: {rec.rule}.)*"
 
 
 # --- strengths and gaps ----------------------------------------------------------------------------
@@ -102,7 +101,7 @@ def summary_section(match: CandidateMatch, requirements: Requirements) -> list[s
     strengths, gaps = strengths_and_gaps(match, requirements)
     lines += [f"**Strengths:** {sentences(strengths[:3])}", "", f"**Gaps:** {sentences(gaps[:3])}", ""]
     if match.improvements:
-        lines += ["**To become a clear hire:**", ""]
+        lines += ["**What would make this a clear interview:**", ""]
         lines += [f"- {i.suggestion} (verify: {i.how_to_verify})" for i in match.improvements]
         lines.append("")
     lines.append(f"**Retrieval ({match.match_score}):** {match.reasoning}")

@@ -53,7 +53,7 @@ shortlisted candidate it is 0.6 × deep_score (a fixed rubric over the deep \
 review's verdict per requirement) + 0.4 × match_score; otherwise it equals \
 match_score. match_score is the retrieval score: semantic (resume similarity to \
 the role, 50%), keyword (BM25 term overlap, 20%) and skill_coverage (share of \
-must-have skills, 30%). recommendation is the hiring decision, already made by \
+must-have skills, 30%). recommendation (interview or not_now) is already made by \
 a fixed rule; never contradict it. Each must_have_check is met; not_met, which disqualifies the candidate \
 whatever the score; or unverified, meaning the resume lists the skill but the \
 required years cannot be confirmed. Unverified is a risk to probe in \
@@ -180,11 +180,13 @@ when there are none.
 Do not score the candidate; scores are computed from your verdicts. Judge only \
 from the resume; never assume a skill it does not show.""" + UNTRUSTED_RESUME
 
-HIRING_RATIONALES = """\
-You write the hiring committee's rationale for decisions that are already \
-made. The input is JSON with the role requirements and, for each shortlisted \
-candidate, the decision, the rule that produced it, the final score (0.6 \
-deep score + 0.4 retrieval score) and the deep assessment.
+DECISION_RATIONALES = """\
+You explain screening recommendations that are already made: "interview" \
+(recommend interviewing the candidate) or "not_now". People make the hiring \
+decision; never call these hiring decisions. The input is JSON with the role \
+requirements and, for each shortlisted candidate, the decision, the rule that \
+produced it, the final score (0.6 deep score + 0.4 retrieval score) and the \
+deep assessment.
 
 For every candidate write one or two sentences explaining their decision with \
 the decisive evidence: the requirements they meet strongly, what is partial \
@@ -193,7 +195,7 @@ the candidate ids given."""
 
 IMPROVEMENT_SUGGESTIONS = """\
 You advise a recruiter on borderline candidates: close to the bar but not a \
-clear hire. The input is JSON with the role requirements and, for each \
+clear recommendation to interview. The input is JSON with the role requirements and, for each \
 candidate, their deep assessment (evidence per requirement, gaps, risk flags), \
 final score and recommendation.
 

@@ -191,7 +191,7 @@ class ScoreBreakdown(BaseModel):
 
 # --- rounds 2 and 3 ---------------------------------------------------------------------------------
 #
-# The LLM only judges (``DeepReview``, ``HiringRationales``); code turns its judgements into
+# The LLM only judges (``DeepReview``, ``DecisionRationales``); code turns its judgements into
 # scores and decisions (``Assessment``, ``Recommendation``) under the rules in ``guardrails``.
 
 Verdict = Literal["strong", "partial", "missing"]
@@ -258,7 +258,10 @@ class Assessment(BaseModel):
         return [f"{e.requirement}: {e.note}" for e in self.requirement_evidence if e.note]
 
 
-Decision = Literal["hire", "no_hire"]
+# The screening recommends whom to interview; people make the hiring decisions.
+Decision = Literal["interview", "not_now"]
+# Decisions as earlier versions stored them (saved sessions), read as today's.
+_LEGACY_DECISIONS = {"hire": "interview", "no_hire": "not_now"}
 Confidence = Literal["high", "medium", "low"]
 
 
@@ -267,7 +270,7 @@ class DecisionRationale(BaseModel):
     rationale: str = Field(description="One or two sentences explaining the given decision with evidence.")
 
 
-class HiringRationales(BaseModel):
+class DecisionRationales(BaseModel):
     """Round 3, as the LLM returns it: an explanation for each decision code already made."""
 
     rationales: list[DecisionRationale]
@@ -278,6 +281,15 @@ class Recommendation(BaseModel):
     confidence: Confidence
     rule: str  # the decision rule's outcome, e.g. "final 82 ≥ 75; no must-have missing; no high risk"
     rationale: str
+
+    @field_validator("decision", mode="before")
+    @classmethod
+    def _current_name(cls, value: str) -> str:
+        return _LEGACY_DECISIONS.get(value, value)
+
+    @property
+    def label(self) -> str:
+        return "Recommend interview" if self.decision == "interview" else "Not now"
 
 
 class Improvement(BaseModel):
@@ -292,7 +304,7 @@ class CandidateImprovements(BaseModel):
 
 
 class ImprovementSuggestions(BaseModel):
-    """Suggestions for borderline candidates: what would turn them into a clear hire."""
+    """Suggestions for borderline candidates: what would make them a clear interview."""
 
     candidates: list[CandidateImprovements]
 

@@ -14,7 +14,7 @@ from profile_matching.schemas import (
     CandidateImprovements,
     DecisionRationale,
     DeepReview,
-    HiringRationales,
+    DecisionRationales,
     Improvement,
     ImprovementSuggestions,
     RequirementEvidence,
@@ -95,9 +95,9 @@ def fake_review(verdict: str = "strong", risk_flags: list[RiskFlag] | None = Non
     return answer
 
 
-def fake_rationales(messages: list) -> HiringRationales:
+def fake_rationales(messages: list) -> DecisionRationales:
     candidates = json.loads(messages[1].content)["candidates"]
-    return HiringRationales(rationales=[
+    return DecisionRationales(rationales=[
         DecisionRationale(candidate_id=c["id"], rationale=f"Final score {c['final_score']}.") for c in candidates
     ])
 
@@ -115,5 +115,5 @@ def fake_advisor(messages: list) -> ImprovementSuggestions:
 
 # Answers for every LLM call the screening rounds make; merge into a FakeChatModel's responses.
 SCREENING_RESPONSES = {
-    DeepReview: fake_review(), HiringRationales: fake_rationales, ImprovementSuggestions: fake_advisor,
+    DeepReview: fake_review(), DecisionRationales: fake_rationales, ImprovementSuggestions: fake_advisor,
 }

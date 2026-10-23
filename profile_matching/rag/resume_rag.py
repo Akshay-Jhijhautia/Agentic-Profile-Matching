@@ -711,7 +711,7 @@ class LocalModel:
 
 # Only models whose scores were measured and calibrated (``job_matcher.SEMANTIC_RANGES``,
 # fitted with ``scripts/ranking_eval.py``) are offered: an uncalibrated model would put
-# match scores, and so hire decisions, on a different scale. Of ten models compared on
+# match scores, and so interview recommendations, on a different scale. Of ten models compared on
 # the sample resumes, these two ranked as well as OpenAI's text-embedding-3-small.
 LOCAL_MODELS = {
     "ibm-granite/granite-embedding-small-english-r2": LocalModel(180),

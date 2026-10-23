@@ -72,7 +72,7 @@ class Settings:
     reports_dir: str = "reports"
     # Candidates kept after the initial screen.
     shortlist_size: int = 10
-    # 1: retrieval only; 2: + deep analysis of the shortlist; 3: + hire/no-hire decisions.
+    # 1: retrieval only; 2: + deep analysis of the shortlist; 3: + interview recommendations.
     screening_rounds: int = 3
     # Save the shortlist and per-candidate reports under reports_dir after every screening.
     save_reports: bool = True

@@ -43,7 +43,7 @@ def full_record(match):
             "risk_flags": [RiskFlag(flag="Short tenure at Acme", severity="medium")],
             "requirement_evidence": evidence,
         }),
-        "recommendation": Recommendation(decision="no_hire", confidence="medium", rule="final score 67 < 75",
+        "recommendation": Recommendation(decision="not_now", confidence="medium", rule="final score 67 < 75",
                                          rationale="Thin Redis."),
         "improvements": [Improvement(gap="Redis years", suggestion="Show Redis work", how_to_verify="Ask")],
     })
@@ -102,7 +102,7 @@ def test_full_candidate_report(john):
                     "## Strengths", "## Gaps", "## Risk flags", "## Improvement suggestions",
                     "## Retrieval reasoning"):
         assert section in report
-    assert "**Recommendation:** No hire (medium confidence). Thin Redis. *(Rule: final score 67 < 75.)*" in report
+    assert "**Recommendation:** Not now (medium confidence). Thin Redis. *(Rule: final score 67 < 75.)*" in report
     assert "· borderline" in report
     assert "| Python | must-have | strong | Python \\| Django, 6 yrs | – |" in report  # pipes escaped
     assert "- Short tenure at Acme (medium)" in report
@@ -123,7 +123,7 @@ def test_knocked_out_candidate_report(services):
 
 def test_summary_section_lists_improvements(john):
     section = "\n".join(explainability.summary_section(full_record(john), ROLE))
-    assert "**To become a clear hire:**" in section
+    assert "**What would make this a clear interview:**" in section
     assert "- Show Redis work (verify: Ask)" in section
 
 
@@ -197,7 +197,7 @@ def test_pipeline_suggests_improvements_and_saves_reports(services):
     borderline = [m for m in state["shortlist"] if m.borderline]
     assert borderline and all(m.improvements for m in borderline)
     assert sum(c is ImprovementSuggestions for c, _ in services.model.calls) == 1
-    assert "**To become a clear hire:**" in state["report"]
+    assert "**What would make this a clear interview:**" in state["report"]
 
     folder = Path(services.settings.reports_dir) / Path(state["report_dir"]).name
     assert (folder / "summary.md").read_text() == state["report"]

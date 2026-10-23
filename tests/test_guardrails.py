@@ -5,6 +5,7 @@ from profile_matching import guardrails, llm, prompts, screening
 from profile_matching.schemas import (
     DeepReview,
     MustHaveCheck,
+    Recommendation,
     RequirementEvidence,
     RequirementReview,
     Requirements,
@@ -187,15 +188,15 @@ def _decided(match, final_target: int, verdicts=("strong",), risks=()):
 @pytest.mark.parametrize(
     "final, verdicts, risks, decision, confidence",
     [
-        (90, ("strong",), (), "hire", "high"),
-        (90, ("strong", "partial"), (), "hire", "medium"),  # clear score, shaky must-have
-        (80, ("strong",), (), "hire", "medium"),
-        (76, ("strong",), (), "hire", "low"),  # close to the threshold
-        (72, ("strong",), (), "no_hire", "low"),
-        (66, ("strong",), (), "no_hire", "medium"),
-        (50, ("strong",), (), "no_hire", "high"),
-        (95, ("strong", "missing"), (), "no_hire", "high"),  # blocked: must-have missing
-        (95, ("strong",), ("high",), "no_hire", "high"),  # blocked: high risk
+        (90, ("strong",), (), "interview", "high"),
+        (90, ("strong", "partial"), (), "interview", "medium"),  # clear score, shaky must-have
+        (80, ("strong",), (), "interview", "medium"),
+        (76, ("strong",), (), "interview", "low"),  # close to the threshold
+        (72, ("strong",), (), "not_now", "low"),
+        (66, ("strong",), (), "not_now", "medium"),
+        (50, ("strong",), (), "not_now", "high"),
+        (95, ("strong", "missing"), (), "not_now", "high"),  # blocked: must-have missing
+        (95, ("strong",), ("high",), "not_now", "high"),  # blocked: high risk
     ],
 )
 def test_decision_rule(john, final, verdicts, risks, decision, confidence):
@@ -246,3 +247,11 @@ def test_structured_gives_up_after_the_retry():
 def test_prompts_with_resume_text_mark_it_untrusted():
     for prompt in (prompts.DEEP_ASSESSMENT, prompts.COMPARE_CANDIDATES, prompts.INTERVIEW_QUESTIONS):
         assert prompt.endswith(prompts.UNTRUSTED_RESUME)
+
+
+def test_decisions_saved_by_earlier_versions_still_load():
+    # Saved sessions from before 1.1 hold "hire" / "no_hire".
+    old = Recommendation.model_validate({"decision": "hire", "confidence": "high", "rule": "r", "rationale": "r"})
+    assert (old.decision, old.label) == ("interview", "Recommend interview")
+    assert Recommendation.model_validate({"decision": "no_hire", "confidence": "low", "rule": "r",
+                                          "rationale": "r"}).label == "Not now"

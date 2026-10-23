@@ -190,8 +190,8 @@ class ChatSession:
     def _on_finalize_ranking(self, change: dict) -> None:
         decided = [m for m in change["shortlist"] if m.recommendation is not None]
         if decided:
-            hires = sum(m.recommendation.decision == "hire" for m in decided)
-            self._note(f"Final round: {hires} hire, {len(decided) - hires} no hire.")
+            advance = sum(m.recommendation.decision == "interview" for m in decided)
+            self._note(f"Final round: {advance} recommended for interview, {len(decided) - advance} not now.")
 
     def _on_suggest_improvements(self, change: dict) -> None:
         improved = [m.name for m in change["shortlist"] if m.improvements]

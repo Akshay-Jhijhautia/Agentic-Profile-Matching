@@ -10,7 +10,7 @@ quotes. Code then:
 3. adds code-detected risks, such as text that tries to instruct the model;
 4. computes the deep score from a fixed rubric;
 
-and round 3 decides hire or no-hire with a fixed rule, leaving the model only
+and round 3 decides whom to recommend for interview with a fixed rule, leaving the model only
 the rationale. The same verdicts therefore always give the same score and
 decision, whichever model produced them, and every adjustment is recorded.
 """
@@ -45,7 +45,7 @@ MAX_RISK_PENALTY = 20
 
 # --- decision rule -------------------------------------------------------------------------------------
 
-HIRE_THRESHOLD = 75
+INTERVIEW_THRESHOLD = 75
 # Distance from the threshold that makes a score-based decision clear-cut, or a close call.
 CLEAR_MARGIN, CLOSE_MARGIN = 10, 5
 
@@ -206,13 +206,13 @@ def build_assessment(
 
 
 def decide(match: CandidateMatch) -> Recommendation:
-    """Hire when the final score clears the threshold, no must-have is missing and no
-    risk is high. Confidence reflects how clear-cut that is. ``rationale`` is left
+    """Recommend an interview when the final score clears the threshold, no must-have is
+    missing and no risk is high. Confidence reflects how clear-cut that is. ``rationale`` is left
     as the rule's outcome until the model explains it."""
     assessment = match.assessment
     missing = [e.requirement for e in assessment.requirement_evidence if e.kind == "must" and e.verdict == "missing"]
     high_risks = [f.flag for f in assessment.risk_flags if f.severity == "high"]
-    margin = match.final_score - HIRE_THRESHOLD
+    margin = match.final_score - INTERVIEW_THRESHOLD
 
     blockers = []
     if missing:
@@ -221,18 +221,19 @@ def decide(match: CandidateMatch) -> Recommendation:
         blockers.append(f"high risk: {'; '.join(high_risks)}")
     if blockers:
         rule = "blocked by " + " and ".join(blockers)
-        return Recommendation(decision="no_hire", confidence="high", rule=rule, rationale=rule)
+        return Recommendation(decision="not_now", confidence="high", rule=rule, rationale=rule)
 
-    hire = margin >= 0
+    advance = margin >= 0
     shaky = any(e.kind == "must" and e.verdict != "strong" for e in assessment.requirement_evidence) or any(
         f.severity == "medium" for f in assessment.risk_flags
     )
     if abs(margin) < CLOSE_MARGIN:
         confidence = "low"
-    elif abs(margin) >= CLEAR_MARGIN and not (hire and shaky):
+    elif abs(margin) >= CLEAR_MARGIN and not (advance and shaky):
         confidence = "high"
     else:
         confidence = "medium"
-    comparison = "≥" if hire else "<"
-    rule = f"final score {match.final_score} {comparison} {HIRE_THRESHOLD}; no must-have missing; no high risk"
-    return Recommendation(decision="hire" if hire else "no_hire", confidence=confidence, rule=rule, rationale=rule)
+    comparison = "≥" if advance else "<"
+    rule = f"final score {match.final_score} {comparison} {INTERVIEW_THRESHOLD}; no must-have missing; no high risk"
+    return Recommendation(decision="interview" if advance else "not_now", confidence=confidence, rule=rule,
+                          rationale=rule)

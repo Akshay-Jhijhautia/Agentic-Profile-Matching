@@ -2,7 +2,7 @@
 
 Each run screens the index from scratch (no cached assessments). Reported per
 model, and across all models together: top-k overlap and Kendall tau between
-runs, hire/no-hire agreement, the spread of each candidate's deep score, and
+runs, agreement on interview recommendations, the spread of each candidate's deep score, and
 whether the requirements came out the same.
 
 Run from the project root, e.g. on the generated sample resumes:
@@ -68,7 +68,7 @@ def summarise(runs: list[dict]) -> dict:
         "deep_spread_max": max(spreads, default=0),
         "identical_requirements": len(requirement_sets) == 1,
         "rankings": rankings,
-        "hires": [sorted(m.id for m in s["shortlist"] if m.recommendation and m.recommendation.decision == "hire")
+        "interviews": [sorted(m.id for m in s["shortlist"] if m.recommendation and m.recommendation.decision == "interview")
                   for s in runs],
     }
 
@@ -76,11 +76,11 @@ def summarise(runs: list[dict]) -> dict:
 def print_metrics(title: str, metrics: dict, labels: list[str]) -> None:
     print(f"\n== {title}")
     for name, value in metrics.items():
-        if name not in {"rankings", "hires"}:
+        if name not in {"rankings", "interviews"}:
             print(f"{name:>22}: {value:.2f}" if isinstance(value, float) else f"{name:>22}: {value}")
-    for label, ranking, hires in zip(labels, metrics["rankings"], metrics["hires"], strict=True):
+    for label, ranking, interviews in zip(labels, metrics["rankings"], metrics["interviews"], strict=True):
         print(f"{label:>22}: {', '.join(ranking)}")
-        print(f"{'hires':>22}: {', '.join(hires) or 'none'}")
+        print(f"{'interview':>22}: {', '.join(interviews) or 'none'}")
 
 
 def main(argv: list[str] | None = None) -> int:
