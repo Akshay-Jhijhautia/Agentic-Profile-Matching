@@ -110,6 +110,8 @@ class IntakeReport:
     unchanged: int
     removed: list[str]
     skipped: list[dict]  # {"file", "reason"}
+    # The embedder the folder was indexed with before, when switching made us re-index it.
+    reindexed_from: str | None = None
 
     def summary(self) -> str:
         changes = f"{len(self.indexed)} new or changed, {self.unchanged} unchanged"
@@ -117,6 +119,8 @@ class IntakeReport:
             changes += f", {len(self.removed)} removed"
         heading = "Uploaded resumes" if self.folder == UPLOADS_LABEL else f"Resumes in {self.folder}"
         lines = [f"{heading}: {self.ready} ready ({changes})."]
+        if self.reindexed_from:
+            lines.append(f"Re-indexed every resume: the index used other embeddings ({self.reindexed_from}).")
         if self.skipped:
             lines.append(f"Skipped {len(self.skipped)} file(s):")
             lines += [f"- {item['file']}: {item['reason']}" for item in self.skipped]
@@ -125,28 +129,44 @@ class IntakeReport:
         return "\n".join(lines)
 
 
+def make_embedder(settings: Settings, kind: str | None = None) -> resume_rag.Embedder:
+    """The embedder ``kind`` (default: ``settings.embedder``): local, openai or hashing."""
+    kind = kind or settings.embedder
+    if kind == "local":
+        return resume_rag.LocalEmbedder(cache_dir=settings.models_dir)
+    if kind == "openai":
+        return resume_rag.OpenAIEmbedder()
+    if kind == "hashing":
+        return resume_rag.HashingEmbedder()
+    raise ValueError(f"Unknown embedder '{kind}'. Use local, openai or hashing.")
+
+
 class ResumePool:
     """The indexed resumes of one folder, with their matcher and candidate lookup."""
 
-    def __init__(self, folder: Path, rag: resume_rag.ResumeRAG):
+    def __init__(self, folder: Path, rag: resume_rag.ResumeRAG, reindexed_from: str | None = None):
         self.folder = folder
         self.rag = rag
+        self.reindexed_from = reindexed_from
 
     @classmethod
     def open(
         cls, folder: str | Path, settings: Settings, embedder: resume_rag.Embedder | None = None
     ) -> ResumePool:
-        """The pool for ``folder`` (created empty on first use; ``sync`` fills it)."""
+        """The pool for ``folder`` (created empty on first use; ``sync`` fills it).
+
+        It always uses ``embedder`` (default: the configured one). An index built
+        with other embeddings is dropped and rebuilt: it is only derived from the
+        files, and vectors of two models cannot be compared.
+        """
         path = resolve_folder(folder)
-        if embedder is None and settings.embedder == "hashing":
-            embedder = resume_rag.HashingEmbedder()
-        # Otherwise None: a new pool uses OpenAI embeddings (created lazily, so a missing key
-        # is reported by ``Services.check_ready``), an existing one the embedder that built it.
-        rag = resume_rag.ResumeRAG(
-            settings.db_dir, embedder=embedder, metadata_llm=llm.metadata_fallback(),
-            collection_name=pool_name(path), collection_metadata={"folder": str(path)},
-        )
-        return cls(path, rag)
+        embedder = embedder or make_embedder(settings)
+        options = dict(embedder=embedder, metadata_llm=llm.metadata_fallback(),
+                       collection_name=pool_name(path), collection_metadata={"folder": str(path)})
+        try:
+            return cls(path, resume_rag.ResumeRAG(settings.db_dir, **options))
+        except resume_rag.EmbedderMismatchError as exc:
+            return cls(path, resume_rag.ResumeRAG(settings.db_dir, reset=True, **options), reindexed_from=exc.stored)
 
     @property
     def id(self) -> str:
@@ -171,5 +191,5 @@ class ResumePool:
         return IntakeReport(
             folder=resume_rag.display_path(str(self.folder)), ready=self.size,
             indexed=summary["indexed"], unchanged=len(summary["unchanged"]), removed=summary["removed"],
-            skipped=summary["skipped"],
+            skipped=summary["skipped"], reindexed_from=self.reindexed_from,
         )

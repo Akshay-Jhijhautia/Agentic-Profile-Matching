@@ -17,9 +17,11 @@ import logging
 import math
 import os
 import re
+import sys
 from collections import defaultdict
 from datetime import date
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
@@ -656,7 +658,13 @@ def extract_metadata(
 class Embedder(Protocol):
     name: str  # recorded on the collection so queries use the embedder that built it
 
-    def embed(self, texts: list[str]) -> list[list[float]]: ...
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        """Vectors for resume chunks."""
+        ...
+
+    def embed_query(self, text: str) -> list[float]:
+        """The vector for a search (some models embed queries and documents differently)."""
+        ...
 
 
 class OpenAIEmbedder:
@@ -664,9 +672,16 @@ class OpenAIEmbedder:
 
     def __init__(self, model: str | None = None, client=None, batch_size: int = EMBED_BATCH_SIZE):
         self.model = model or os.getenv("OPENAI_EMBEDDING_MODEL") or DEFAULT_EMBEDDING_MODEL
-        self.client = client or openai.OpenAI()
+        self._client = client
         self.batch_size = batch_size
         self.name = f"openai:{self.model}"
+
+    @property
+    def client(self):
+        # Created on first use, so a missing key is reported by ``Services.check_ready``.
+        if self._client is None:
+            self._client = openai.OpenAI()
+        return self._client
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         vectors = []
@@ -676,6 +691,99 @@ class OpenAIEmbedder:
             )
             vectors.extend(item.embedding for item in sorted(response.data, key=lambda d: d.index))
         return vectors
+
+    def embed_query(self, text: str) -> list[float]:
+        return self.embed([text])[0]
+
+
+# Instruction some retrieval models were trained with for queries (documents get none).
+_RETRIEVAL_QUERY = "Represent this sentence for searching relevant passages: "
+
+
+@dataclass(frozen=True)
+class LocalModel:
+    """An open-source embedding model run on this machine, and how it expects its input."""
+
+    size_mb: int
+    query_prefix: str = ""
+    document_prefix: str = ""
+
+
+# Only models whose scores were measured and calibrated (``job_matcher.SEMANTIC_RANGES``,
+# fitted with ``scripts/ranking_eval.py``) are offered: an uncalibrated model would put
+# match scores, and so hire decisions, on a different scale. Of ten models compared on
+# the sample resumes, these two ranked as well as OpenAI's text-embedding-3-small.
+LOCAL_MODELS = {
+    "ibm-granite/granite-embedding-small-english-r2": LocalModel(180),
+    "snowflake/snowflake-arctic-embed-m": LocalModel(430, _RETRIEVAL_QUERY),
+}
+DEFAULT_LOCAL_MODEL = "ibm-granite/granite-embedding-small-english-r2"
+
+
+class LocalEmbedder:
+    """Embeddings computed on this machine with an open-source model (fastembed, ONNX).
+
+    No API key and nothing leaves the machine. The model is downloaded once
+    into ``cache_dir`` on first use and loaded lazily, so opening an index
+    costs nothing until something is embedded.
+    """
+
+    def __init__(self, model: str | None = None, cache_dir: str | None = None, batch_size: int = 32):
+        self.model = model or os.getenv("LOCAL_EMBEDDING_MODEL") or DEFAULT_LOCAL_MODEL
+        if self.model not in LOCAL_MODELS:
+            raise ValueError(
+                f"Unsupported local embedding model '{self.model}'. Use one of: {', '.join(LOCAL_MODELS)}."
+            )
+        self.spec = LOCAL_MODELS[self.model]
+        self.cache_dir = cache_dir
+        self.batch_size = batch_size
+        self.name = f"local:{self.model}"
+        self._engine = None
+
+    @property
+    def engine(self):
+        if self._engine is None:
+            self._engine = load_local_model(self.model, self.cache_dir)
+        return self._engine
+
+    def _vectors(self, texts: list[str]) -> list[list[float]]:
+        return [vector.tolist() for vector in self.engine.embed(texts, batch_size=self.batch_size)]
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        return self._vectors([self.spec.document_prefix + text for text in texts])
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._vectors([self.spec.query_prefix + text])[0]
+
+
+def load_local_model(model: str, cache_dir: str | None):
+    """The fastembed model from ``cache_dir``, downloaded there the first time."""
+    try:
+        from fastembed import TextEmbedding
+        from huggingface_hub.utils import logging as hub_logging
+        from loguru import logger as fastembed_logger
+    except ImportError as exc:
+        raise ValueError("Local embeddings need fastembed: pip install fastembed") from exc
+    # Their log lines (an expected cache miss logged as ERROR, rate-limit advice) are noise
+    # here: the notice below says what happens, and failures are raised with a fix.
+    fastembed_logger.disable("fastembed")
+    hub_logging.set_verbosity_error()
+    folder = str(Path(cache_dir).expanduser()) if cache_dir else None
+    if folder:
+        Path(folder).mkdir(parents=True, exist_ok=True)
+    try:
+        return TextEmbedding(model, cache_dir=folder, local_files_only=True)
+    except Exception:  # not downloaded yet (or incomplete): fetch it below
+        pass
+    size = LOCAL_MODELS[model].size_mb
+    print(f"Downloading the embedding model {model} ({size} MB, once)…", file=sys.stderr)
+    try:
+        return TextEmbedding(model, cache_dir=folder)
+    except Exception as exc:  # network, disk or a corrupt download
+        raise ValueError(
+            f"Could not download the embedding model {model} ({size} MB, from Hugging Face): {exc}. "
+            "Check your connection, or set EMBEDDER=openai."
+        ) from exc
 
 
 STOPWORDS = frozenset(
@@ -699,6 +807,9 @@ class HashingEmbedder:
     def embed(self, texts: list[str]) -> list[list[float]]:
         return [self._vector(text) for text in texts]
 
+    def embed_query(self, text: str) -> list[float]:
+        return self._vector(text)
+
     def _vector(self, text: str) -> list[float]:
         vector = [0.0] * self.dimensions
         for token in re.findall(r"[a-z0-9+#]+", text.lower()):
@@ -710,13 +821,15 @@ class HashingEmbedder:
         return [v / norm for v in vector]
 
 
-def embedder_from_name(name: str) -> Embedder:
-    """Rebuild an embedder from the ``name`` stored on a collection."""
+def embedder_from_name(name: str, cache_dir: str | None = None) -> Embedder:
+    """Rebuild an embedder from the ``name`` stored on a collection (``cache_dir``: local models)."""
     kind, _, arg = name.partition(":")
     if kind == "openai":
         return OpenAIEmbedder(model=arg or None)
     if kind == "hashing":
         return HashingEmbedder(int(arg) if arg else 512)
+    if kind == "local":
+        return LocalEmbedder(model=arg or None, cache_dir=cache_dir)
     raise ValueError(f"Unknown embedder '{name}'")
 
 
@@ -729,6 +842,10 @@ def default_embedder_name() -> str:
 
 class EmbedderMismatchError(ValueError):
     """The index was built with a different embedder than the one requested."""
+
+    def __init__(self, message: str, stored: str):
+        super().__init__(message)
+        self.stored = stored
 
 
 def _content_hash(content: str) -> str:
@@ -813,7 +930,8 @@ class ResumeRAG:
         if self._embedder and stored and stored != self._embedder.name:
             raise EmbedderMismatchError(
                 f"Index at '{self.persist_dir}' was built with '{stored}', not "
-                f"'{self._embedder.name}'. Re-index with --reset to switch embedders."
+                f"'{self._embedder.name}'. Re-index with --reset to switch embedders.",
+                stored,
             )
         return collection
 

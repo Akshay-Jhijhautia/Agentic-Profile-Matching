@@ -18,9 +18,10 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    # Retrieval engine: file reading, vector index (SQLite + NumPy), hybrid search
+    # Retrieval engine: file reading, local embeddings, vector index (SQLite + NumPy), hybrid search
     "openai>=1.40",
     "numpy>=1.26",
+    "fastembed>=0.9,<1",
     "rank-bm25>=0.2.2",
     "pypdf>=5.0",
     "python-docx>=1.1",

@@ -2,7 +2,7 @@
 
     profile-match chat     [--resumes PATH ...] [--session ID]    chat with the agent
     profile-match screen   "request" | --jd-file JD --resumes PATH ...   one-shot screening
-    profile-match index    FOLDER [--embedder openai|hashing]     index or refresh a resume folder
+    profile-match index    FOLDER [--embedder local|openai|hashing]  index or refresh a resume folder
     profile-match list     FOLDER                                 candidates indexed from a folder
     profile-match sessions [--delete ID]                          saved chat sessions
     profile-match clean    [--older-than DAYS] [--yes]            remove old uploads, indexes, sessions
@@ -25,7 +25,6 @@ from pathlib import Path
 from . import __version__, cli, maintenance, pools, providers, sessions
 from .agent.graph import build_graph, screen
 from .config import get_settings
-from .rag import resume_rag
 from .services import Services
 
 DEFAULT_CLEAN_DAYS = 30
@@ -115,11 +114,11 @@ def _sync_folder(name: str, description: str, argv: list[str], with_embedder: bo
     parser = _parser(name, description)
     parser.add_argument("folder", help="Resume folder.")
     if with_embedder:
-        parser.add_argument("--embedder", choices=["openai", "hashing"],
-                            help="Embeddings for a new folder index (default: EMBEDDER, openai).")
+        parser.add_argument("--embedder", choices=["local", "openai", "hashing"],
+                            help="Embeddings for this folder's index (default: EMBEDDER, local).")
     args = parser.parse_args(argv)
-    embedder = resume_rag.HashingEmbedder() if getattr(args, "embedder", None) == "hashing" else None
     services = Services.from_settings()
+    embedder = pools.make_embedder(services.settings, args.embedder) if getattr(args, "embedder", None) else None
     print(services.use_folder(args.folder, embedder=embedder).summary())
     return services
 

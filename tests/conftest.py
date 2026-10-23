@@ -7,6 +7,14 @@ from profile_matching.services import Services
 from tests.paths import RESUMES_DIR
 
 
+@pytest.fixture(autouse=True)
+def no_model_downloads(monkeypatch):
+    """The suite stays offline: loading a real embedding model fails the test that tried."""
+    def refuse(model, cache_dir):
+        raise AssertionError(f"a test tried to load the embedding model {model}; use a fake or embedder='hashing'")
+    monkeypatch.setattr(resume_rag, "load_local_model", refuse)
+
+
 @pytest.fixture(scope="session")
 def hashing_db(tmp_path_factory) -> str:
     """An index of the fixture resumes built with the offline hashing embedder."""

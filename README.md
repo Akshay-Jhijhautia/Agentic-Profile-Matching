@@ -5,6 +5,7 @@ ranking it makes, and refines the search through conversation. It is built on a
 retrieval engine (`profile_matching/rag/`):
 - file tools that read PDF, DOCX and text resumes;
 - a local index of resumes chunked by section (SQLite, exact search with NumPy), with extracted skills, experience and education;
+- local embeddings: an open-source model runs on your machine, so resumes are indexed without an API key;
 - a hybrid semantic + keyword matcher with must-have checks.
 
 ```
@@ -26,7 +27,8 @@ you> Write 3 interview questions for the top candidate
 
 Requires Python 3.11+ and a chat model: OpenAI by default, or Anthropic,
 Google Gemini, a local Ollama server or any OpenAI-compatible server (see
-[Chat model providers](#chat-model-providers)).
+[Chat model providers](#chat-model-providers)). Resume embeddings are computed
+locally; the first index downloads the model once (180 MB).
 
 ```bash
 pip install "profile-match @ git+https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching.git"
@@ -73,7 +75,7 @@ From a source checkout, `python main.py ...` runs the same commands.
 | --- | --- |
 | `profile-match chat [--resumes PATH ...] [--session ID]` | Chat with the agent; resume a saved session with `--session` |
 | `profile-match screen "request" \| --jd-file JD --resumes PATH ...` | One-shot screening; prints the report and saves all reports |
-| `profile-match index FOLDER [--embedder openai\|hashing]` | Index or refresh a folder without screening |
+| `profile-match index FOLDER [--embedder local\|openai\|hashing]` | Index or refresh a folder without screening |
 | `profile-match list FOLDER` | The candidates indexed from a folder |
 | `profile-match sessions [--delete ID]` | Saved chat sessions, newest first: id, date, role, resumes |
 | `profile-match clean [--older-than DAYS] [--yes]` | Old upload batches and sessions (default 30 days), indexes of deleted folders, and a ChromaDB index left by versions before 1.1; lists them, deletes with `--yes` |
@@ -87,6 +89,7 @@ Everything the tool keeps lives in one folder, `~/.profile-match`
 | Path | Contents |
 | --- | --- |
 | `index/index.sqlite` | The index: one collection per resume folder or upload batch |
+| `models/` | The local embedding model, downloaded on first use |
 | `uploads/` | Copies of resumes given as files, one batch per chat or file set |
 | `sessions.sqlite` | Saved chat sessions (LangGraph checkpoints) |
 | `.env` | Optional settings, e.g. `OPENAI_API_KEY` |
@@ -103,7 +106,8 @@ docker run --rm -it -e OPENAI_API_KEY \
     profile-match chat --resumes ./applicants
 ```
 
-The image runs as a non-root user. `/data` keeps indexes, uploads and
+The image runs as a non-root user and includes the embedding model, so indexing
+works without network access. `/data` keeps indexes, uploads and
 sessions between runs; `/work` is your folder of resumes and job descriptions,
 where reports are written. For another chat provider, build with its extra
 (`--build-arg EXTRAS=anthropic`) and pass its settings with `-e`.
@@ -420,26 +424,59 @@ LLM_BASE_URL=http://localhost:8000/v1 LLM_MODEL=llama-3.3-70b profile-match chat
 Provider differences are handled in `profile_matching/providers.py`: Claude
 gets no temperature and uses its native structured outputs, OpenAI's reasoning
 models use the Responses API, and errors name the provider and the setting to
-fix. Embeddings are separate: the default `EMBEDDER=openai` still needs
-`OPENAI_API_KEY`, so with another provider and no OpenAI key, use
-`EMBEDDER=hashing`. Only OpenAI has been tested end to end with live calls; the
-other providers are covered by offline tests.
+fix. Embeddings do not depend on the chat provider: they are computed locally
+(see [Embeddings](#embeddings)), so Anthropic, Gemini or Ollama need no OpenAI
+key. Only OpenAI has been tested end to end with live calls; the other
+providers are covered by offline tests.
+
+## Embeddings
+
+Resumes and searches are embedded by an open-source model running on your
+machine: `ibm-granite/granite-embedding-small-english-r2` (Apache-2.0, 180 MB,
+downloaded once into `~/.profile-match/models`). No API key, nothing leaves the
+machine, and the same resumes get the same vectors on every run. Indexing 100
+resumes takes about 5 seconds on a laptop CPU.
+
+It was chosen by measurement, not benchmark tables. Ten local models were
+compared with OpenAI's `text-embedding-3-small` on the 100 sample resumes and 16
+queries (`scripts/ranking_eval.py`):
+
+| Embeddings | P@10 | nDCG@10 | AUC | semantic AUC |
+| --- | --- | --- | --- | --- |
+| OpenAI `text-embedding-3-small` | 0.908 | 0.998 | 0.995 | 0.995 |
+| **granite-embedding-small-english-r2** (default) | **0.921** | **0.998** | **0.995** | 0.992 |
+| snowflake-arctic-embed-m (`LOCAL_EMBEDDING_MODEL`) | 0.915 | 0.998 | 0.994 | 0.993 |
+| bge-small-en-v1.5, bge-base, gte-base, nomic, mxbai-large, MiniLM, potion | 0.896–0.908 | ≤ 0.997 | ≤ 0.991 | 0.966–0.989 |
+
+Each model's similarities are mapped onto OpenAI's score scale
+(`job_matcher.SEMANTIC_RANGES`, fitted on the candidates who reach the
+shortlist), so the hire threshold keeps its meaning. Only calibrated models can
+be selected. In a live comparison on 17 job descriptions, with requirements and
+deep reviews held fixed, 67 of 69 hire decisions were the same; the two that
+differed sat on the hire line (final 75–76 with OpenAI, 73–74 locally), the
+kind of candidate a second run with the same model can also flip.
+
+`EMBEDDER=openai` uses OpenAI embeddings instead (needs `OPENAI_API_KEY`), and
+`EMBEDDER=hashing` a keyword-only embedder for tests. A folder indexed with
+other embeddings is re-indexed automatically the next time it is used.
 
 ## Configuration
 
 | Variable | Default | Used for |
 | --- | --- | --- |
 | `LLM_PROVIDER` / `LLM_MODEL` | `openai` / provider default | The chat model (see above) |
-| `OPENAI_API_KEY` | — | OpenAI chat model and OpenAI embeddings |
+| `OPENAI_API_KEY` | — | OpenAI chat model (and OpenAI embeddings, if chosen) |
 | `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY` | — | The other providers' chat models |
 | `LLM_BASE_URL` / `LLM_API_KEY` | — | An OpenAI-compatible server or a remote Ollama server, and its key |
 | `LLM_TEMPERATURE` | provider default | Only for models that accept one (not Claude) |
 | `LLM_TIMEOUT` / `LLM_MAX_RETRIES` | `60` / `2` | Request limits |
 | `OPENAI_RESPONSES_API` | `true` (`false` with `LLM_BASE_URL`) | OpenAI's Responses API, required for tool calling with reasoning models |
-| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Resume and query embeddings |
+| `EMBEDDER` | `local` | Resume embeddings: `local`, `openai`, or `hashing` (keyword overlap only, for tests) |
+| `LOCAL_EMBEDDING_MODEL` | `ibm-granite/granite-embedding-small-english-r2` | The local model; `snowflake/snowflake-arctic-embed-m` is the other calibrated choice |
+| `MODELS_DIR` | `~/.profile-match/models` | Where the local model is downloaded |
+| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | With `EMBEDDER=openai` |
 | `PROFILE_MATCH_HOME` | `~/.profile-match` | Local data: indexes, uploads, sessions, `.env` |
 | `INDEX_DIR` / `UPLOADS_DIR` / `SESSIONS_DB` | under `PROFILE_MATCH_HOME` | Override one location (`CHROMA_DB_DIR` still works for `INDEX_DIR`) |
-| `EMBEDDER` | `openai` | Embeddings for new folder indexes: `openai`, or `hashing` (offline, keyword overlap only) |
 | `REPORTS_DIR` | `reports` | Where reports are saved; the only directory the agent may write to |
 | `SHORTLIST_SIZE` | `10` | Candidates kept after round 1 |
 | `SCREENING_ROUNDS` | `3` | 1: retrieval only; 2: + deep analysis; 3: + hire / no-hire |
@@ -448,9 +485,8 @@ other providers are covered by offline tests.
 Settings come from the environment, then `./.env`, then
 `~/.profile-match/.env`. The older `OPENAI_MODEL`, `OPENAI_TEMPERATURE`,
 `OPENAI_TIMEOUT` and `OPENAI_MAX_RETRIES` still work for the OpenAI provider.
-No API key? `profile-match index <folder> --embedder
-hashing` builds an offline index (also `EMBEDDER=hashing`) for trying `index`
-and `list`. The agent itself needs a chat model.
+`profile-match index` and `list` need no API key at all; screening and chat
+need a chat model (a local Ollama model works without one).
 
 ## Project layout
 
@@ -549,6 +585,9 @@ knockouts, rankings and scores for all 100 candidates in every query.
 - **Round 1 covers the whole index.** Screening scores every resume rather than
   a retrieval pool, so no qualifying candidate is missed. LLM cost is spent
   only on the shortlist.
+- **Local embeddings by default.** Every company gets the same embeddings,
+  whatever chat provider it uses, with no key and no data leaving the machine.
+  The model was picked and calibrated by measurement on the sample resumes.
 - **Exact search, no vector database.** A pool holds hundreds or a few thousand
   resumes, so comparing the query with every chunk takes milliseconds. Exact
   search never misses a neighbour the way approximate indexes can, and SQLite
@@ -564,19 +603,22 @@ knockouts, rankings and scores for all 100 candidates in every query.
 
 ## Limitations
 
-- **Embeddings still need OpenAI** (or the keyword-only hashing embedder),
-  whichever chat provider is used.
-- **Models can disagree** on candidates near the hire threshold, and only
+- **Embedding models disagree on details.** Calibration aligns score scales,
+  but per candidate the local model and OpenAI differ by about 5 match points
+  on average (2 points of final score), more in some fields. Rankings and hire
+  decisions agreed in the comparison above; candidates on the hire line can
+  go either way, as they can between two runs of the same model.
+- **Chat models can disagree** on candidates near the hire threshold, and only
   OpenAI's models have been measured (see the stability check). Next steps:
-  - local embeddings;
   - letting rules decide or recruiters confirm the extracted requirements;
   - a reproducibility cache for LLM outputs.
 - **Heuristic skill years.** A skill's years come from the dated roles that
   mention it, so skills listed only in a Skills section are "unverified".
 - **Blind screening isn't implemented.** Names and contact details reach the
   model during deep analysis.
-- **Synthetic data.** The semantic score range was calibrated on the generated
-  sample resumes; real resumes may need it re-tuned.
+- **Synthetic data.** The embedding model was chosen, and its score range
+  calibrated, on the generated sample resumes; real resumes may need both
+  re-checked with `scripts/ranking_eval.py`.
 - **Unsupported formats.** Legacy `.doc`, `.rtf`, `.odt`, scanned PDFs and
   images aren't read; they are reported so they can be converted. Subfolders of a resume folder aren't
   read either.

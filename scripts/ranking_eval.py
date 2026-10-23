@@ -13,7 +13,12 @@ Every resume's role family is known, which gives relevance labels. Per query:
 - nDCG@10 over the same list;
 - AUC: the chance that a relevant candidate's match score beats an irrelevant
   one's, over every candidate. Below 1.0 means some weak fit outscores a
-  strong one somewhere in the pool.
+  strong one somewhere in the pool;
+- semantic AUC: the same over the embedding similarity alone, which isolates
+  the embedder from the keyword and skill signals.
+
+Each candidate's raw (uncalibrated) similarity is recorded too, for fitting an
+embedder's ``job_matcher.SEMANTIC_RANGES`` entry.
 
 ``compare`` checks two runs candidate by candidate: identical knockouts, top-10
 overlap, rank correlation and the largest match-score change.
@@ -31,6 +36,7 @@ import json
 import math
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path
@@ -44,6 +50,7 @@ from profile_matching.services import Services
 from scripts import generate_sample_resumes
 
 TOP_K = 10
+METRICS = ("p_at_10", "ndcg_at_10", "auc", "semantic_auc")
 # Role families of the hand-written resumes (the synthetic ones carry theirs).
 HANDWRITTEN_FAMILIES = {
     "resume_john_doe": "python_backend", "resume_jane_smith": "data_science",
@@ -74,7 +81,7 @@ def _q(name: str, relevant: str, must=(), nice=()) -> Query:
     return Query(name, frozenset(relevant.split()), tuple(must), tuple(nice))
 
 
-QUERIES = (
+QUERIES: tuple[Query, ...] = (
     _q("frontend_react", "frontend fullstack", [("React", 3), ("TypeScript", None)], ["Next.js", "Jest", "Tailwind CSS"]),
     _q("fullstack_node", "fullstack", [("React", None), ("Node.js", None)], ["PostgreSQL", "Docker", "TypeScript"]),
     _q("python_backend", "python_backend", [("Python", 3), ("Django", None)], ["PostgreSQL", "Celery", "Docker"]),
@@ -94,6 +101,8 @@ QUERIES = (
     _q("open_ai", "ml_engineer", nice=["LLMs", "NLP", "Hugging Face"]),
 )
 
+QUERY_BY_NAME = {query.name: query for query in QUERIES}
+
 
 class CachedEmbedder:
     """Wraps an embedder with a JSON cache, so repeated runs embed byte-identical vectors."""
@@ -112,6 +121,13 @@ class CachedEmbedder:
                 self.cache[self._key(text)] = vector
             self.path.write_text(json.dumps(self.cache))
         return [self.cache[self._key(t)] for t in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        key = self._key(f"query\n{text}")
+        if key not in self.cache:
+            self.cache[key] = self.inner.embed_query(text)
+            self.path.write_text(json.dumps(self.cache))
+        return self.cache[key]
 
 
 # --- metrics ---------------------------------------------------------------------------------------
@@ -151,20 +167,30 @@ def run(embedder: resume_rag.Embedder, workdir: Path) -> dict:
 
     llm.metadata_fallback = lambda: None  # rule-based metadata only: runs stay comparable
     services = Services(settings=Settings(db_dir=str(db), embedder="hashing"))
+    started = time.perf_counter()
     services.use_folder(resumes, embedder=embedder)
-    family_of = {p.id: families[Path(p.resume_path).stem] for p in services.candidates.all()}
+    indexing_seconds = time.perf_counter() - started
+    profiles = services.candidates.all()
+    family_of = {p.id: families[Path(p.resume_path).stem] for p in profiles}
+    id_of = {p.resume_path: p.id for p in profiles}
 
-    results = {"embedder": embedder.name, "queries": {}}
+    results = {"embedder": embedder.name, "indexing_seconds": round(indexing_seconds, 1), "queries": {}}
     for query in QUERIES:
-        ranked = screening.evaluate(services, query.requirements())
+        requirements = query.requirements()
+        ranked = screening.evaluate(services, requirements)
         top = screening.shortlist(ranked, TOP_K)
         relevance = [int(family_of[m.id] in query.relevant) for m in top]
+        vector = services.matcher._embed_query(requirements.query_text())
+        raw = {id_of[path]: c["semantic_score"]
+               for path, c in services.matcher._semantic_candidates(vector, list(id_of)).items()}
         results["queries"][query.name] = {
             "p_at_10": mean(relevance) if relevance else 0.0,
             "ndcg_at_10": ndcg(relevance),
             "auc": auc([(m.match_score, family_of[m.id] in query.relevant) for m in ranked]),
+            "semantic_auc": auc([(m.score_breakdown.semantic, family_of[m.id] in query.relevant) for m in ranked]),
             "ranking": [
                 {"id": m.id, "score": m.match_score, "passes": m.passes_must_haves, "family": family_of[m.id],
+                 "raw_semantic": raw[m.id],
                  **{k: round(v, 4) if isinstance(v, float) else v for k, v in m.score_breakdown.model_dump().items()}}
                 for m in ranked
             ],
@@ -172,19 +198,42 @@ def run(embedder: resume_rag.Embedder, workdir: Path) -> dict:
     return results
 
 
+# Match scores that look strong / weak to a recruiter.
+STRONG_SCORE, WEAK_SCORE = 70, 60
+
+
+def score_errors(results: dict) -> dict:
+    """Wrong-family candidates scoring as strong, and right-family candidates who pass every
+    must-have scoring as weak, over all queries."""
+    rows = [(q, r) for q in results["queries"].values() for r in q["ranking"]]
+    relevant = {name: QUERY_BY_NAME[name].relevant for name in results["queries"]}
+    flagged = {"weak_scored_strong": 0, "strong_scored_weak": 0}
+    for name, q in results["queries"].items():
+        for r in q["ranking"]:
+            fits = r["family"] in relevant[name]
+            flagged["weak_scored_strong"] += not fits and r["score"] >= STRONG_SCORE
+            flagged["strong_scored_weak"] += fits and r["passes"] and r["score"] < WEAK_SCORE
+    flagged["pairs"] = len(rows)
+    return flagged
+
+
 def summarise(results: dict) -> dict:
     queries = results["queries"].values()
-    return {metric: mean(q[metric] for q in queries) for metric in ("p_at_10", "ndcg_at_10", "auc")}
+    return {metric: mean(q[metric] for q in queries) for metric in METRICS if all(metric in q for q in queries)}
 
 
 def print_run(results: dict) -> None:
-    print(f"embedder: {results['embedder']}")
-    print(f"{'query':<16} {'P@10':>6} {'nDCG':>6} {'AUC':>6}  top 3")
+    print(f"embedder: {results['embedder']} (indexing {results['indexing_seconds']} s)")
+    print(f"{'query':<16} {'P@10':>6} {'nDCG':>6} {'AUC':>6} {'semAUC':>6}  top 3")
     for name, q in results["queries"].items():
         top3 = ", ".join(f"{r['id']}({r['family']},{r['score']})" for r in q["ranking"][:3])
-        print(f"{name:<16} {q['p_at_10']:>6.2f} {q['ndcg_at_10']:>6.2f} {q['auc']:>6.3f}  {top3}")
+        print(f"{name:<16} {q['p_at_10']:>6.2f} {q['ndcg_at_10']:>6.2f} {q['auc']:>6.3f} {q['semantic_auc']:>6.3f}  {top3}")
     overall = summarise(results)
-    print(f"{'mean':<16} {overall['p_at_10']:>6.3f} {overall['ndcg_at_10']:>6.3f} {overall['auc']:>6.3f}")
+    print(f"{'mean':<16} " + " ".join(f"{overall[m]:>6.3f}" for m in METRICS))
+    errors = score_errors(results)
+    print(f"wrong-role candidates scoring >= {STRONG_SCORE}: {errors['weak_scored_strong']}; right-role candidates "
+          f"passing every must-have but scoring < {WEAK_SCORE}: {errors['strong_scored_weak']} "
+          f"(of {errors['pairs']} query-candidate pairs)")
 
 
 def compare(first: dict, second: dict) -> bool:
@@ -206,7 +255,9 @@ def compare(first: dict, second: dict) -> bool:
               f" {kendall_tau(ids_a, ids_b):>6.3f} {max(map(abs, deltas)):>7} {mean(deltas):>+6.1f}"
               f"  {b['p_at_10'] - a['p_at_10']:>+5.2f} {b['auc'] - a['auc']:>+5.3f}")
     sa, sb = summarise(first), summarise(second)
-    print("mean  " + "  ".join(f"{k}: {sa[k]:.3f} -> {sb[k]:.3f}" for k in sa))
+    print("mean  " + "  ".join(f"{k}: {sa[k]:.3f} -> {sb[k]:.3f}" for k in sa if k in sb))
+    ea, eb = score_errors(first), score_errors(second)
+    print("  ".join(f"{k}: {ea[k]} -> {eb[k]}" for k in ("weak_scored_strong", "strong_scored_weak")))
     print("IDENTICAL rankings and scores" if identical else "Rankings or scores differ")
     return identical
 
@@ -218,6 +269,7 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--embedder", default="hashing:512", help="Embedder name, e.g. openai:text-embedding-3-small.")
     run_parser.add_argument("--out", type=Path, required=True, help="Where to write the results (JSON).")
     run_parser.add_argument("--cache", type=Path, help="Embedding cache (JSON), reused across runs.")
+    run_parser.add_argument("--models-dir", help="Where local embedding models are downloaded.")
     compare_parser = commands.add_parser("compare", help="Compare two runs.")
     compare_parser.add_argument("first", type=Path)
     compare_parser.add_argument("second", type=Path)
@@ -226,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "compare":
         compare(json.loads(args.first.read_text()), json.loads(args.second.read_text()))
         return 0
-    embedder = resume_rag.embedder_from_name(args.embedder)
+    embedder = resume_rag.embedder_from_name(args.embedder, cache_dir=args.models_dir)
     if args.cache:
         embedder = CachedEmbedder(embedder, args.cache)
     with tempfile.TemporaryDirectory() as workdir:

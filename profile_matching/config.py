@@ -63,8 +63,11 @@ class Settings:
     uploads_dir: str = str(DEFAULT_HOME / "uploads")
     # Saved chat sessions (SQLite).
     sessions_db: str = str(DEFAULT_HOME / "sessions.sqlite")
-    # "openai" (default) or "hashing" (offline, keyword overlap only) for new resume pools.
-    embedder: str = "openai"
+    # Resume embeddings: "local" (an open-source model on this machine, the default),
+    # "openai", or "hashing" (offline, keyword overlap only; for tests).
+    embedder: str = "local"
+    # Where the local embedding model is downloaded (once).
+    models_dir: str = str(DEFAULT_HOME / "models")
     # The only directory the agent may write to (reports, summaries).
     reports_dir: str = "reports"
     # Candidates kept after the initial screen.
@@ -94,6 +97,7 @@ class Settings:
             uploads_dir=os.getenv("UPLOADS_DIR") or str(home / "uploads"),
             sessions_db=os.getenv("SESSIONS_DB") or str(home / "sessions.sqlite"),
             embedder=os.getenv("EMBEDDER") or defaults.embedder,
+            models_dir=os.getenv("MODELS_DIR") or str(home / "models"),
             reports_dir=os.getenv("REPORTS_DIR") or defaults.reports_dir,
             shortlist_size=int(os.getenv("SHORTLIST_SIZE") or defaults.shortlist_size),
             screening_rounds=int(os.getenv("SCREENING_ROUNDS") or defaults.screening_rounds),
@@ -112,8 +116,8 @@ class Settings:
             raise ValueError(f"screening_rounds must be 1, 2 or 3, got {self.screening_rounds}")
         if self.shortlist_size < 1:
             raise ValueError(f"shortlist_size must be at least 1, got {self.shortlist_size}")
-        if self.embedder not in {"openai", "hashing"}:
-            raise ValueError(f"embedder must be openai or hashing, got {self.embedder}")
+        if self.embedder not in {"local", "openai", "hashing"}:
+            raise ValueError(f"embedder must be local, openai or hashing, got {self.embedder}")
 
     @property
     def responses_api(self) -> bool:

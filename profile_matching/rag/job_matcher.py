@@ -35,10 +35,18 @@ KEYWORD_WEIGHT = 0.2
 SKILL_WEIGHT = 0.3
 # Query repeats per skill token: required skills count double in BM25.
 REQUIRED_SKILL_BOOST = 2
-# Cosine similarity range mapped onto 0..1 before blending, per embedder kind.
-# Raw similarity would compress every score: with text-embedding-3-small the
-# sample JD/resume pairs measured 0.34 (unrelated) to 0.62 (near-perfect fit).
-SEMANTIC_RANGES = {"openai": (0.30, 0.65), "hashing": (0.0, 0.50)}
+# Cosine similarity range mapped onto 0..1 before blending, per embedder (full
+# name first, then kind). Raw similarity would compress every score: with
+# text-embedding-3-small the sample JD/resume pairs measured 0.34 (unrelated) to
+# 0.62 (near-perfect fit). Local models' ranges were fitted so the candidates that
+# reach the shortlist (each query's top 5) score as they do with OpenAI, keeping the
+# hire threshold meaningful; see ``scripts/ranking_eval.py``.
+SEMANTIC_RANGES = {
+    "openai": (0.30, 0.65),
+    "hashing": (0.0, 0.50),
+    "local:ibm-granite/granite-embedding-small-english-r2": (0.661, 0.953),
+    "local:snowflake/snowflake-arctic-embed-m": (-0.123, 0.509),
+}
 DEFAULT_SEMANTIC_RANGE = (0.0, 1.0)
 # Fields ``JobMatcher.evaluate`` adds on top of a ``match`` entry.
 EVALUATION_ONLY_KEYS = {"failed_requirements"}
@@ -203,7 +211,9 @@ def _skill_match(required: list[str], preferred: list[str], candidate_skills: li
 
 def calibrate_semantic(similarity: float, embedder_name: str) -> float:
     """Map a raw cosine similarity onto 0..1 using the embedder's ``SEMANTIC_RANGES``."""
-    low, high = SEMANTIC_RANGES.get(embedder_name.partition(":")[0], DEFAULT_SEMANTIC_RANGE)
+    low, high = SEMANTIC_RANGES.get(embedder_name) or SEMANTIC_RANGES.get(
+        embedder_name.partition(":")[0], DEFAULT_SEMANTIC_RANGE
+    )
     return min(1.0, max(0.0, (similarity - low) / (high - low)))
 
 
@@ -226,8 +236,7 @@ class JobMatcher:
     def _embed_query(self, job_description: str) -> list[float]:
         if not job_description or not job_description.strip():
             raise ValueError("Job description must be a non-empty string")
-        (query,) = self.rag.embedder.embed([job_description])
-        return query
+        return self.rag.embedder.embed_query(job_description)
 
     def _semantic_candidates(
         self, query: list[float], resume_paths: list[str] | None = None
