@@ -62,6 +62,18 @@ def test_sessions_are_saved_and_resumed_after_a_restart(home):
     assert not sessions.exists(saver, session_id) and sessions.list_sessions(resumed.graph, saver) == []
 
 
+def test_a_pending_confirmation_survives_a_restart(home):
+    from tests.test_confirmation import IOS_JD, IOS_ROLE
+    home.model.responses[Requirements] = IOS_ROLE
+    first, _ = _session(home)
+    first.send(IOS_JD)
+    assert first.values["open_questions"] and "candidates" not in first.values
+
+    resumed, _ = _session(home, first.session_id)
+    resumed.send("yes")
+    assert resumed.values["open_questions"] == [] and len(resumed.values["candidates"]) == 12
+
+
 def test_session_ids_are_readable_and_unique():
     first, second = sessions.new_session_id(), sessions.new_session_id()
     assert first != second and first.startswith(f"{datetime.now():%Y%m%d}-")

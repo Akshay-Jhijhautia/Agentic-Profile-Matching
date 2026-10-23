@@ -163,6 +163,7 @@ graph TD
     __start__([START]) --> route_intent
     route_intent -.->|new_search| parse_jd
     route_intent -.->|refine| refine_requirements
+    route_intent -.->|confirm| accept_requirements
     route_intent -.->|ask| assistant
     route_intent -.->|end| __end__([END])
     route_intent -.->|"folder to load"| load_resumes
@@ -170,10 +171,14 @@ graph TD
     load_resumes -.->|"re-screen current role"| search_resumes
     load_resumes -.->|otherwise| human_feedback
     parse_jd --> extract_requirements
+    extract_requirements -.->|"open questions"| confirm_requirements
     extract_requirements -.->|resumes loaded| search_resumes
     extract_requirements -.->|no resumes yet| await_resumes
+    confirm_requirements --> human_feedback
     refine_requirements -.->|resumes loaded| search_resumes
     refine_requirements -.->|no resumes yet| await_resumes
+    accept_requirements -.->|resumes loaded| search_resumes
+    accept_requirements -.->|no resumes yet| await_resumes
     await_resumes --> human_feedback
     search_resumes --> rank_candidates
     rank_candidates -.->|"one Send per candidate"| assess_candidate
@@ -197,11 +202,13 @@ with the compiled graph.
 
 | Node | What it does |
 | --- | --- |
-| `route_intent` | Classifies each message: a new role (`new_search`), a change to the current requirements (`refine`), a question (`ask`) or goodbye (`end`), and picks out any resume folder, resume files or JD file it names. Exit words, `/resumes` and `/add` skip the model |
+| `route_intent` | Classifies each message: a new role (`new_search`), a change to the current requirements (`refine`), accepting requirements it was asked to check (`confirm`), a question (`ask`) or goodbye (`end`), and picks out any resume folder, resume files or JD file it names. Exit words, a plain "yes" to a confirmation, `/resumes` and `/add` skip the model |
 | `load_resumes` | Activates a folder or uploads files, then starts the requested search, re-screens for the current role, or waits |
 | `await_resumes` | Requirements are set but no resumes are loaded: lists the requirements and asks for resumes |
 | `parse_jd` | Reads the latest message: JD text, a short request or a JD file path |
 | `extract_requirements` | Must-have vs nice-to-have requirements ([details](#requirements)) |
+| `confirm_requirements` | Only when the job description leaves a must-have open (a requirement naming several skills where the model kept only some): asks the recruiter to confirm or change it before screening |
+| `accept_requirements` | The recruiter accepted the requirements as proposed: screening starts |
 | `refine_requirements` | Applies "make Kubernetes a must-have" to the current requirements, as a new version |
 | `search_resumes` | **Round 1**: scores and checks every indexed resume |
 | `rank_candidates` | Keeps the best `SHORTLIST_SIZE` candidates who pass every must-have |
@@ -261,7 +268,26 @@ each with gpt-5.6-terra and gpt-6-luna), the share of runs that agree:
 | degree | 1.00 | 1.00 |
 
 What still varies is exactly the multi-skill lines (is "iOS" a must-have next
-to Swift? Prometheus and Grafana?), the cases a recruiter should settle.
+to Swift? Prometheus and Grafana?), the cases a recruiter should settle. So in
+chat, when a requirement names several skills and the model kept only some (or
+none) as must-haves, the agent asks before screening:
+
+```
+Before screening, please check what the job description leaves open:
+- "4+ years of professional iOS development in Swift": **Swift** must-have, **iOS** only nice-to-have.
+
+Reply **yes** to screen with these, or say what to change (for example "make iOS a must-have").
+```
+
+"yes" screens as proposed; any change is applied as a refinement first. Clear
+requirements ("Strong Java and Spring Boot skills") never trigger a question:
+over the same 10 inputs and 10 runs each, 6 inputs were never asked about, and
+the ML job description, the ML request and the iOS role were asked about in
+most runs. When the model reads a multi-skill line strictly (every skill a
+must-have) nothing is asked, since that can only knock candidates out, never
+let a weak one in.
+`profile-match screen` cannot ask: it screens as proposed and lists the open
+points under **Please check** in the report.
 
 Skills are normalised through the shared vocabulary (`react.js` → `React`). A
 skill listed without dated experience is `unverified` (kept, flagged), unless the

@@ -4,7 +4,8 @@ Every screening starts by turning the job description into must-haves (with
 years), nice-to-haves, total years and a degree. Must-haves are knockouts, so
 when they change between runs or models, different candidates are rejected.
 This extracts each job description ``--runs`` times per model and reports, per
-field, how many distinct answers came back and how often two runs agree.
+field, how many distinct answers came back and how often two runs agree, and in
+how many runs chat would ask the recruiter to confirm open requirements.
 
     python -m scripts.requirements_stability --runs 5 --models gpt-5.6-terra,gpt-6-luna
     python -m scripts.requirements_stability "React and 3+ years experience" jd.txt --runs 3
@@ -24,7 +25,7 @@ from dotenv import load_dotenv
 from profile_matching import llm, providers
 from profile_matching.config import get_settings
 from profile_matching.rag import skills_vocab
-from profile_matching.requirements import extract_requirements, load_job_description
+from profile_matching.requirements import extract_requirements, load_job_description, open_questions
 from profile_matching.schemas import Requirements
 
 JD_DIR = Path("tests/fixtures/job_descriptions")
@@ -89,7 +90,10 @@ def main(argv: list[str] | None = None) -> int:
     for jd in inputs:
         runs = {name: [r for (j, n), r in zip(jobs, results) if j == jd and n == name] for name in models}
         report = measure(runs)
-        print(f"\n== {Path(jd).name if Path(jd).exists() else jd}")
+        everything = [r for model_runs in runs.values() for r in model_runs]
+        asked = sum(bool(open_questions(texts[jd], r)) for r in everything)
+        print(f"\n== {Path(jd).name if Path(jd).exists() else jd}  (chat would ask the recruiter in "
+              f"{asked}/{len(everything)} runs)")
         for field, data in report.items():
             totals[field].append(data["overall"])
             within = "  ".join(f"{m}: {v:.2f}" for m, v in data["within"].items())

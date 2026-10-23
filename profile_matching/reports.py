@@ -8,6 +8,7 @@ reasoning already computed, so they never disagree with the ranking.
 
 from __future__ import annotations
 
+import re
 from .explainability import decision_cell, must_have_cell, summary_section
 from .markdown import join, or_dash, table
 from .schemas import CandidateMatch, RankChange, RankingDiff, Requirements
@@ -69,18 +70,36 @@ def changes_section(diff: RankingDiff) -> list[str]:
 # --- shortlist report and chat summary -----------------------------------------------------------------
 
 
+def confirmation_message(questions: list[str]) -> str:
+    """Asks the recruiter to settle the requirements the job description leaves open
+    (``questions``: ``OpenQuestion.line()`` texts)."""
+    example = re.search(r"\*\*([^*,]+)[^*]*\*\* only nice-to-have", questions[0])
+    hint = f' (for example "make {example.group(1)} a must-have")' if example else ""
+    return "\n".join([
+        "Before screening, please check what the job description leaves open:",
+        *(f"- {question}." for question in questions),
+        "",
+        f"Reply **yes** to screen with these, or say what to change{hint}.",
+    ])
+
+
 def shortlist_report(
     requirements: Requirements,
     candidates: list[CandidateMatch],
     shortlist: list[CandidateMatch],
     diff: RankingDiff | None = None,
+    assumptions: list[str] | None = None,
 ) -> str:
-    """The shortlist report: requirements, what changed (after a refinement), the
-    ranking table with every round's scores and the recommendation, a block per
-    candidate (strengths, gaps, improvements) and the closest knocked-out candidates."""
+    """The shortlist report: requirements (and any open ones the screening assumed), what
+    changed (after a refinement), the ranking table with every round's scores and the
+    recommendation, a block per candidate (strengths, gaps, improvements) and the closest
+    knocked-out candidates."""
     passing = _passing(candidates)
     lines = [f"# Shortlist: {requirements.role_title}", ""]
     lines += [f"- {line}" for line in requirements_lines(requirements)] + [""]
+    if assumptions:
+        lines += ["**Please check:** the job description leaves these open, so the screening assumed:",
+                  *(f"- {assumption}" for assumption in assumptions), ""]
     if diff is not None:
         lines += changes_section(diff)
     lines.append(

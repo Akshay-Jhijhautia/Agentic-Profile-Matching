@@ -63,6 +63,9 @@ class AgentState(TypedDict, total=False):
     load_paths: list[str] | None
     jd_file: str | None
     load_error: str | None
+    # Requirements the job description leaves open (``requirements.open_questions``), as lines;
+    # cleared once the recruiter confirms or changes the requirements.
+    open_questions: list[str]
 
 
 # Our types stored in checkpoints. LangGraph only restores allow-listed types

@@ -22,5 +22,7 @@ def last_ai_text(state: dict) -> str:
 
 
 def refined(state: dict) -> bool:
-    """Whether this turn re-ranks after a refinement (rather than a new search)."""
-    return state.get("intent") == "refine" and len(state.get("requirements_history", [])) > 1
+    """Whether this turn re-ranks after a refinement (rather than a new search): there must
+    be an earlier ranking, which a change made while confirming the requirements has not."""
+    return (state.get("intent") == "refine" and len(state.get("requirements_history", [])) > 1
+            and bool(state.get("previous_candidates")))

@@ -9,6 +9,7 @@ from profile_matching.requirements import (
     alternative_skills,
     degree_required,
     extract_requirements,
+    open_questions,
 )
 from profile_matching.schemas import DegreeLevel, Requirements
 from tests.fakes import FakeChatModel
@@ -225,6 +226,23 @@ def test_in_prose_a_lone_mention_is_left_to_the_model():
     req = extract_requirements(jd, model=_fake(_requirements(must_have=_must("Terraform"))))
     assert req.must_have_skills == ["Terraform"] and req.min_total_years == 5
     assert {"Kubernetes", "Python", "Go", "Helm"} <= set(req.nice_to_have)
+
+
+@pytest.mark.parametrize("jd, model_must, questions", [
+    # The model kept Swift, not iOS: open.
+    ("ios_engineer.txt", ["Swift", "SwiftUI", "XCTest"], [("4+ years of professional iOS development in Swift",
+                                                         ("Swift",), ("iOS",))]),
+    # None of the three became must-haves: open.
+    ("senior_python_ml.txt", ["Python", "scikit-learn", "NLP", "Machine Learning"],
+     [("Experience deploying models with Docker and Kubernetes on AWS", (), ("Docker", "Kubernetes", "AWS"))]),
+    # Every multi-skill requirement kept all its skills: nothing to ask.
+    ("java_backend.txt", ["Java", "Spring Boot", "Kafka"], []),
+    ("frontend_react.txt", ["React", "TypeScript", "CSS"], []),
+])
+def test_open_questions_are_the_models_own_must_have_choices(jd, model_must, questions):
+    text = (JD_DIR / jd).read_text()
+    req = extract_requirements(text, model=_fake(_requirements(must_have=_must(*model_must))))
+    assert [(q.requirement, q.must, q.nice) for q in open_questions(text, req)] == questions
 
 
 def test_rule_floor_never_adds_thresholds_the_llm_left_out():

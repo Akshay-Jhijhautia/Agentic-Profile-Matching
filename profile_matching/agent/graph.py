@@ -11,6 +11,7 @@ Conversational (``conversational=True``), with a human feedback loop:
 
     START → route_intent ─┬─ new_search → parse_jd → extract_requirements ─┐
                           ├─ refine → refine_requirements ─────────────────┴→ search_resumes
+                          ├─ confirm → accept_requirements ────────────────────→ search_resumes
                           ├─ resumes → load_resumes → (search | screen again | wait)
                           ├─ ask → assistant ⇄ tools → human_feedback
                           └─ end → END
@@ -18,6 +19,8 @@ Conversational (``conversational=True``), with a human feedback loop:
                    → suggest_improvements → [explain_changes, after a refine] → generate_report
     generate_report → human_feedback (waits for the user) → route_intent
     Without resumes loaded, requirements go to await_resumes instead of search_resumes.
+    When the job description leaves requirements open, extract_requirements goes to
+    confirm_requirements → human_feedback first; the reply confirms or refines them.
 """
 
 from __future__ import annotations
@@ -59,7 +62,6 @@ def build_graph(
         builder.add_node(name, getattr(pipeline, name))
     parse, extract, search, rank = PIPELINE
     builder.add_edge(parse, extract)
-    builder.add_conditional_edges(extract, pipeline.resumes_loaded, [search, AWAIT])
     builder.add_edge(search, rank)
     builder.add_conditional_edges(PIPELINE[-1], pipeline.fan_out_assessments, [ASSESS, FINALIZE])
     builder.add_edge(ASSESS, FINALIZE)
@@ -68,6 +70,8 @@ def build_graph(
     builder.add_edge(EXPLAIN, REPORT)
 
     if not conversational:
+        # Nobody to ask: open requirements are screened as proposed and noted in the report.
+        builder.add_conditional_edges(extract, pipeline.resumes_loaded, [search, AWAIT])
         builder.add_edge(START, PIPELINE[0])
         builder.add_edge(REPORT, END)
         builder.add_edge(AWAIT, END)
@@ -81,10 +85,15 @@ def build_graph(
     builder.add_node("assistant", conversation.assistant)
     builder.add_node("tools", ToolNode(tools))
     builder.add_node("human_feedback", conversation.human_feedback)
+    builder.add_node("confirm_requirements", conversation.confirm_requirements)
+    builder.add_node("accept_requirements", conversation.accept_requirements)
 
     builder.add_edge(START, "route_intent")
     builder.add_conditional_edges("route_intent", next_step, ROUTES)
-    builder.add_conditional_edges("refine_requirements", pipeline.resumes_loaded, [search, AWAIT])
+    builder.add_conditional_edges(extract, pipeline.after_requirements, ["confirm_requirements", search, AWAIT])
+    builder.add_edge("confirm_requirements", "human_feedback")
+    for decided in ("refine_requirements", "accept_requirements"):
+        builder.add_conditional_edges(decided, pipeline.resumes_loaded, [search, AWAIT])
     builder.add_edge(AWAIT, "human_feedback")
     builder.add_conditional_edges(
         "load_resumes", after_loading, ["parse_jd", "search_resumes", "human_feedback"]

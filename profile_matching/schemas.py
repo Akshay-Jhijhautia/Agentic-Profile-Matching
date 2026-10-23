@@ -406,14 +406,14 @@ class CandidateMatch(BaseModel):
 
 # --- conversation routing (LLM output) ---------------------------------------------------------
 
-Intent = Literal["new_search", "refine", "ask", "end"]
+Intent = Literal["new_search", "refine", "confirm", "ask", "end"]
 
 
 class IntentDecision(BaseModel):
     intent: Intent = Field(
         description="new_search: screen for a new role from scratch; refine: change the current "
-        "requirements; ask: anything about the current candidates, role or files; end: the user "
-        "is finished."
+        "requirements; confirm: accept requirements the assistant asked them to check; ask: anything "
+        "about the current candidates, role or files; end: the user is finished."
     )
     resume_paths: list[str] = Field(
         description="Folders or resume files the user wants screened, exactly as written; empty if none."

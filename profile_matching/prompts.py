@@ -94,6 +94,9 @@ wanted candidates is a new_search.
 tighten a skill, its years, total experience or the degree ("make Kubernetes a \
 must-have", "5+ years instead", "drop the degree requirement", "TypeScript is \
 only nice to have").
+- confirm: the assistant just asked them to check the requirements and they \
+accept them as proposed ("yes", "looks good, go ahead"). An answer that changes \
+something ("yes, but make iOS a must-have") is refine.
 - ask: anything else about the current role, candidates or files: comparisons \
 ("compare the top 3"), explanations ("why did John rank higher than Jane?"), \
 interview questions, candidate details, saving a report, general questions.

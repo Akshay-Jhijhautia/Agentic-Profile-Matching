@@ -20,6 +20,9 @@ knockouts whichever model, or run, read it:
   equivalent", "preferred" and the like; the lowest degree it names counts.
 - Nice-to-haves are every other skill the text names, plus the model's
   preferences that are not skills ("financial services").
+
+What rules cannot settle, the model's choice on a requirement naming several
+skills, is listed by ``open_questions`` so a recruiter can confirm it.
 """
 
 from __future__ import annotations
@@ -58,6 +61,11 @@ _REQUIREMENT_SPLIT_RE = re.compile(r";|(?<=[.!?])\s+(?=[A-Z])")
 # Where the words of a years phrase end ("5 years of experience operating X, and you ..."):
 # a full stop ends it, the dot in "Node.js" does not.
 _PHRASE_END_RE = re.compile(r"[,;:]|\.(?=\s|$)|\band you\b", re.IGNORECASE)
+# File paths and names in a chat message ("screen ~/Downloads/react-team/jane.pdf"): never
+# skills. "CI/CD" is not a path: a path starts with "/", "~/", "./" or a drive letter.
+_PATH_RE = re.compile(
+    r"(?<![\w/])(?:~|\.{1,2}|[A-Za-z]:)?[/\\][^\s,;]+|\b[\w.-]+\.(?:pdf|docx?|txt|md|rtf|odt)\b", re.IGNORECASE
+)
 # The longest single line read as a request ("React and 3+ years experience"), in words.
 REQUEST_WORDS = 30
 
@@ -97,7 +105,7 @@ def _logical_lines(text: str) -> list[str]:
 def clauses(text: str) -> list[Clause]:
     """The text's requirements, each with its section, skills and softening."""
     section, found = "untitled", []
-    for line in _logical_lines(text):
+    for line in _logical_lines(_PATH_RE.sub(" ", text)):
         if job_matcher.is_jd_header(line):
             section = ("preferred" if _OPTIONAL_RE.search(line)
                        else "required" if _REQUIRED_HEADING_RE.search(line) else "other")
@@ -210,6 +218,35 @@ def apply_rules(proposed: Requirements, text: str) -> Requirements:
         "min_total_years": total,
         "min_degree": required_degree(job_matcher.parse_job_description(text)),
     })
+
+
+@dataclass(frozen=True)
+class OpenQuestion:
+    """A requirement naming several skills where the model chose which are must-haves."""
+
+    requirement: str
+    must: tuple[str, ...]
+    nice: tuple[str, ...]
+
+    def line(self) -> str:
+        chosen = f"**{', '.join(self.must)}** must-have, " if self.must else ""
+        return f'"{self.requirement}": {chosen}**{", ".join(self.nice)}** only nice-to-have'
+
+
+def open_questions(text: str, requirements: Requirements) -> list[OpenQuestion]:
+    """The requirements of ``text`` naming several skills that did not all become must-haves:
+    the only must-have decisions the model made on its own (see ``apply_rules``)."""
+    must = {s.lower() for s in requirements.must_have_skills}
+    questions: dict[str, OpenQuestion] = {}
+    for clause in demanding(clauses(text)):
+        demands = clause.demands
+        chosen = [s for s in demands if s.lower() in must]
+        if len(demands) > 1 and len(chosen) < len(demands):
+            requirement = job_matcher.BULLET_RE.sub("", clause.text).strip().rstrip(".")
+            questions.setdefault(requirement, OpenQuestion(
+                requirement, tuple(chosen), tuple(s for s in demands if s.lower() not in must)
+            ))
+    return list(questions.values())
 
 
 def _in_text_order(found: list[Clause]) -> list[str]:

@@ -8,7 +8,7 @@ from langgraph.types import Send, interrupt
 
 from .. import changes, explainability, llm, pools, prompts, reports, screening
 from ..rag import resume_rag
-from ..requirements import extract_requirements, load_job_description
+from ..requirements import extract_requirements, load_job_description, open_questions
 from ..schemas import ChangeNarrative, RankingDiff, Requirements
 from ..services import Services
 from .state import AgentState
@@ -36,15 +36,22 @@ class PipelineNodes:
     def extract_requirements(self, state: AgentState) -> dict:
         """Split the JD into must-have and nice-to-have requirements."""
         requirements = extract_requirements(state["job_description"], model=self.services.model)
+        questions = [q.line() for q in open_questions(state["job_description"], requirements)]
         # A new search starts a new ranking: earlier refinement changes no longer apply.
-        return {"requirements": requirements, "requirements_history": [requirements], "ranking_diff": None}
+        return {"requirements": requirements, "requirements_history": [requirements], "ranking_diff": None,
+                "open_questions": questions}
 
     def refine_requirements(self, state: AgentState) -> dict:
         """Apply the user's change to the current requirements, as a new version."""
         current = state["requirements"]
         instruction = f"Current requirements:\n{current.model_dump_json()}\n\nInstruction: {last_human_text(state)}"
         updated = llm.structured(Requirements, prompts.REFINE_REQUIREMENTS, instruction, model=self.services.model)
-        return {"requirements": updated, "requirements_history": [updated]}
+        # The recruiter has now decided the requirements: nothing is left open.
+        return {"requirements": updated, "requirements_history": [updated], "open_questions": []}
+
+    def after_requirements(self, state: AgentState) -> str:
+        """Conditional edge after extraction in chat: ask about open requirements first."""
+        return "confirm_requirements" if state.get("open_questions") else self.resumes_loaded(state)
 
     def resumes_loaded(self, state: AgentState) -> str:
         """Conditional edge after the requirements: screen, or ask for resumes first."""
@@ -126,7 +133,7 @@ class PipelineNodes:
         """Write the shortlist report and a short summary for the conversation."""
         parts = (state["requirements"], state["candidates"], state["shortlist"])
         diff = state.get("ranking_diff")
-        report = reports.shortlist_report(*parts, diff=diff)
+        report = reports.shortlist_report(*parts, diff=diff, assumptions=state.get("open_questions"))
         summary = reports.shortlist_summary(*parts)
         if diff is not None:
             summary = f"{self._narrate(diff)}\n\n{summary}"
@@ -175,6 +182,16 @@ class ConversationNodes:
             "candidates": [], "shortlist": [], "previous_candidates": [], "previous_shortlist": [],
             "ranking_diff": None, "messages": [AIMessage(reply)],
         }
+
+    @staticmethod
+    def confirm_requirements(state: AgentState) -> dict:
+        """Ask the recruiter to settle what the job description leaves open (chat only)."""
+        return {"messages": [AIMessage(reports.confirmation_message(state["open_questions"]))]}
+
+    @staticmethod
+    def accept_requirements(state: AgentState) -> dict:
+        """The recruiter accepted the requirements as proposed."""
+        return {"open_questions": []}
 
     @staticmethod
     def human_feedback(state: AgentState) -> dict:

@@ -163,6 +163,12 @@ class ChatSession:
         self._note(f"Must have: {', '.join(r.label for r in requirements.must_have) or 'none'}")
         self._note(f"Nice to have: {', '.join(requirements.nice_to_have) or 'none'}")
 
+    def _on_confirm_requirements(self, change: dict) -> None:
+        self.console.print(Markdown(change["messages"][-1].text))
+
+    def _on_accept_requirements(self, change: dict) -> None:
+        self._note("Screening with these requirements…")
+
     def _on_refine_requirements(self, change: dict) -> None:
         self._note("Updated the requirements:")
         self._on_extract_requirements(change)
