@@ -1,0 +1,10 @@
+Site Reliability Engineer
+
+Our platform team keeps a multi-region SaaS product fast and available. You will own our
+Kubernetes clusters and the tooling around them.
+
+You have at least 5 years of experience operating production infrastructure, and you have run
+Kubernetes in production. You write infrastructure as code with Terraform and automate with
+Python or Go. You know Linux well and have built monitoring with Prometheus and Grafana.
+
+It would be great if you have used Helm and Argo CD, or hold a CKA certification.

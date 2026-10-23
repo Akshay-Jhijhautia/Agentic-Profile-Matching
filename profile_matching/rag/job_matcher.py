@@ -57,7 +57,7 @@ CHUNK_POOL = 50
 BEST_CHUNK_WEIGHT = 0.6
 TOP_CHUNKS_FOR_MEAN = 3
 
-_BULLET_RE = re.compile(r"^\s*[-•*▪◦·]\s*")
+BULLET_RE = re.compile(r"^\s*[-•*▪◦·]\s*")
 _PREFERRED_RE = re.compile(
     r"\b(?:nice[- ]to[- ]haves?|preferred|bonus|a plus|desirable|good[- ]to[- ]haves?|optional)\b",
     re.IGNORECASE,
@@ -68,7 +68,7 @@ _SECTION_HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 # "5+ years", "5 + yrs", "3-5 years", "at least 4 years of hands-on experience with"
-_YEARS_RE = re.compile(
+YEARS_RE = re.compile(
     r"(?P<years>\d+(?:\.\d+)?)\s*(?:\+|(?:-|–|to)\s*\d+(?:\.\d+)?)?\s*\+?\s*(?:years?|yrs?)\b"
     r"(?:\s+of)?(?:\s+(?:professional|hands-on|industry|commercial|relevant|production))?"
     r"(?:\s+experience)?(?:\s+(?:in|with|using|building|developing|of))?\s*(?P<rest>[^.;\n]{0,80})",
@@ -78,10 +78,10 @@ _YEARS_RE = re.compile(
 _YEARS_SKILL_WINDOW = 25
 
 
-def _is_jd_header(line: str) -> bool:
+def is_jd_header(line: str) -> bool:
     """A heading such as "Requirements:" or "Nice to have" (not a short requirement line)."""
     stripped = line.strip()
-    if not stripped or _BULLET_RE.match(line) or len(stripped) > 60:
+    if not stripped or BULLET_RE.match(line) or len(stripped) > 60:
         return False
     if stripped.endswith(":"):
         return True
@@ -92,7 +92,7 @@ def _is_jd_header(line: str) -> bool:
 
 def _years_requirements(line: str) -> list[dict]:
     requirements = []
-    for match in _YEARS_RE.finditer(line):
+    for match in YEARS_RE.finditer(line):
         years = float(match["years"])
         named = skills_vocab.find_skills(match["rest"][:_YEARS_SKILL_WINDOW])
         source = match.group(0).strip()
@@ -124,7 +124,7 @@ def parse_job_description(job_description: str) -> dict:
     core_lines, optional_lines = [], []
     in_optional_section = False
     for line in job_description.splitlines():
-        if _is_jd_header(line):
+        if is_jd_header(line):
             in_optional_section = bool(_PREFERRED_RE.search(line))
         if in_optional_section:
             optional_lines.append(line)

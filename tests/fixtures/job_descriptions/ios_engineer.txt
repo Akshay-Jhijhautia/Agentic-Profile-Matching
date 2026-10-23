@@ -1,0 +1,12 @@
+Senior iOS Engineer
+
+Must have:
+- 4+ years of professional iOS development in Swift
+- SwiftUI in a shipped production app
+- Unit and UI testing with XCTest
+- Bachelor's degree in Computer Science (required)
+
+Preferred:
+- Objective-C for maintaining legacy modules
+- Experience with Firebase
+- Familiarity with CI/CD for mobile releases

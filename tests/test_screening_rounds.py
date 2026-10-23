@@ -29,7 +29,7 @@ def run(services):
     def _run(rounds: int = 3, size: int = 4, responses: dict | None = None):
         services.model = FakeChatModel({Requirements: ROLE, **SCREENING_RESPONSES, **(responses or {})})
         services.settings = dataclasses.replace(services.settings, screening_rounds=rounds, shortlist_size=size)
-        return matching_agent.screen(services, "Python backend engineer")
+        return matching_agent.screen(services, "Python backend engineer; Django is a plus")
 
     return _run
 

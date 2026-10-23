@@ -32,7 +32,7 @@ def run(services):
     Round 1 only unless ``screening_rounds`` is given (the deep rounds have their own tests).
     """
 
-    def _run(requirements: Requirements, jd: str = "Python backend engineer", **settings):
+    def _run(requirements: Requirements, jd: str = "Python backend engineer; Django is a plus", **settings):
         services.model = FakeChatModel({Requirements: requirements, **SCREENING_RESPONSES})
         services.settings = dataclasses.replace(services.settings, **{"screening_rounds": 1} | settings)
         return matching_agent.screen(services, jd)
@@ -87,7 +87,7 @@ def test_pipeline_reports_and_summarises(run):
         assert f"{match.name} (`{match.id}`)" in report and match.reasoning in report
 
     human, summary = state["messages"]
-    assert isinstance(human, HumanMessage) and human.text == "Python backend engineer"
+    assert isinstance(human, HumanMessage) and human.text == "Python backend engineer; Django is a plus"
     assert isinstance(summary, AIMessage) and summary.text.startswith("Screened 12 resumes")
 
 
@@ -100,7 +100,7 @@ def test_pipeline_reads_a_jd_file(run, services):
 
 
 def test_no_candidate_passes(run):
-    state = run(RUST_ROLE)
+    state = run(RUST_ROLE, jd="Rust engineer")
     assert state["shortlist"] == []
     assert "**No candidate meets every must-have.**" in state["report"]
     assert "## Closest knocked-out candidates" in state["report"]

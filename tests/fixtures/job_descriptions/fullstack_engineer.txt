@@ -1,0 +1,15 @@
+Full-Stack Engineer
+
+Responsibilities:
+- Build product features end to end, from React components to Node.js APIs
+- Work with design on new flows and with data on experiments
+
+Qualifications:
+- 3+ years of full-stack experience with React and Node.js
+- TypeScript
+- PostgreSQL or MongoDB
+- Familiarity with Docker and AWS
+
+Bonus:
+- GraphQL
+- Experience with Next.js

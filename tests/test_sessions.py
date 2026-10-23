@@ -48,7 +48,7 @@ def scripted_input(monkeypatch):
 
 def test_sessions_are_saved_and_resumed_after_a_restart(home):
     first, _ = _session(home)
-    first.send("Find me a Python backend engineer")
+    first.send("Find me a Python backend engineer; Django is a plus")
     session_id, shortlist = first.session_id, first.values["shortlist"]
 
     resumed, saver = _session(home, session_id)  # a new graph and connection, as after a restart
@@ -77,7 +77,7 @@ def test_reset_starts_a_new_session_with_the_loaded_resumes(home, tmp_path):
     chat.reset()
     assert chat.session_id != old_id
     assert chat.initial_state["pool_folder"] == str(folder.resolve())
-    chat.send("Find me a Python backend engineer")
+    chat.send("Find me a Python backend engineer; Django is a plus")
     assert {m.name for m in chat.values["candidates"]} == {"John Doe"}
 
 
@@ -116,7 +116,7 @@ def test_sessions_command_lists_and_deletes(home, monkeypatch, capsys):
     assert app.main(["sessions"]) == 0
     assert "No saved sessions yet" in capsys.readouterr().out
     chat, _ = _session(home)
-    chat.send("Find me a Python backend engineer")
+    chat.send("Find me a Python backend engineer; Django is a plus")
     assert app.main(["sessions"]) == 0
     assert chat.session_id in capsys.readouterr().out
     assert app.main(["sessions", "--delete", chat.session_id]) == 0
@@ -147,7 +147,7 @@ def test_clean_finds_old_uploads_orphaned_indexes_and_old_sessions(home, tmp_pat
     shutil.rmtree(deleted_folder)
 
     chat, saver = _session(home)
-    chat.send("Find me a Python backend engineer")
+    chat.send("Find me a Python backend engineer; Django is a plus")
     monkeypatch.setattr(sessions, "last_updated", lambda _: {chat.session_id: datetime.now().astimezone() - timedelta(days=40)})
 
     stale = maintenance.find_stale(settings, older_than_days=30)

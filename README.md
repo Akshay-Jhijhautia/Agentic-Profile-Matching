@@ -230,16 +230,38 @@ without deserialization warnings.
 `extract_requirements` turns a job description or a short request into
 `Requirements`: must-have skills (optionally with minimum years), nice-to-have
 skills, minimum total experience and minimum degree. **Must-haves are knockout
-filters**, so the model's answer passes through deterministic checks:
+filters**, so they must not depend on which model, or which run, read the job
+description. The model proposes; **rules decide wherever the text is explicit**
+(`requirements.apply_rules`):
 
-1. **Recall floor.** A rule-based JD parser (`job_matcher.parse_job_description`)
-   adds vocabulary skills the model skipped (as nice-to-have only) and years it
-   found for a must-have the model left without them.
-2. **Knockout policy.** A must-have can only reject candidates when the text
-   demands it and the resume parser can check it:
-   - skills offered as alternatives ("PyTorch or TensorFlow") become nice-to-have;
-   - broad concepts outside the skills vocabulary ("Relational Databases") become nice-to-have;
-   - a degree is dropped unless a requirement line asks for it without "or equivalent" or "preferred".
+- **Must-haves.** Never a skill in a "preferred" section or a softened phrase
+  ("familiarity with", "a plus"), one of several options ("Oracle or
+  PostgreSQL", "Kubernetes or similar"), a skill mentioned only outside the
+  requirements section, or a concept the resume parser cannot check
+  ("Relational Databases"). A requirement naming one skill makes it a must-have,
+  even if the model missed it. Only requirements naming several skills
+  ("deploying models with Docker and Kubernetes on AWS") are the model's call.
+- **Years** come from the text, not the model: "3+ years with React and
+  Node.js" sets both; "React and 3+ years" ties the years to React; "6+ years
+  of software development" is total experience.
+- **Degree** only when a requirement asks for it without "or equivalent" or
+  "preferred".
+- **Nice-to-haves** are every other skill the text names, plus the model's
+  non-skill preferences ("financial services").
+
+Measured with `scripts/requirements_stability.py` (7 JDs and 3 requests, 5 runs
+each with gpt-5.6-terra and gpt-6-luna), the share of runs that agree:
+
+| | before | with rules |
+| --- | --- | --- |
+| total years | 0.85 | 1.00 |
+| years per must-have | 0.77 | same as the must-haves |
+| nice-to-have skills | 0.57 (with wording) | same as the must-haves |
+| must-haves | 0.88 | 0.86 |
+| degree | 1.00 | 1.00 |
+
+What still varies is exactly the multi-skill lines (is "iOS" a must-have next
+to Swift? Prometheus and Grafana?), the cases a recruiter should settle.
 
 Skills are normalised through the shared vocabulary (`react.js` → `React`). A
 skill listed without dated experience is `unverified` (kept, flagged), unless the
@@ -503,7 +525,7 @@ need a chat model (a local Ollama model works without one).
 | `profile_matching/agent/` | `graph.py`, `state.py` (state, checkpointer), `nodes.py`, `routing.py`, `text.py` |
 | `profile_matching/screening.py` | The three screening rounds |
 | `profile_matching/guardrails.py` | Review items, evidence grounding, verdict bounds, rubric, decision rule, injection checks |
-| `profile_matching/requirements.py` | Requirement extraction with rule floor and knockout policy |
+| `profile_matching/requirements.py` | Requirement extraction: the model proposes, rules decide where the text is explicit |
 | `profile_matching/changes.py` | Requirement and ranking diffs with a reason for every move |
 | `profile_matching/explainability.py` | Per-candidate score breakdown, strengths and gaps, detailed report, saving |
 | `profile_matching/reports.py` | Shortlist report, chat summary, assistant context |
@@ -516,8 +538,8 @@ need a chat model (a local Ollama model works without one).
 | `profile_matching/prompts.py` | All prompt templates |
 | `profile_matching/services.py`, `candidates.py`, `config.py`, `markdown.py` | Shared dependencies, candidate lookup, settings, Markdown helpers |
 | `profile_matching/rag/` | Retrieval engine: `fs_tools` (read, list, search files), `resume_rag` (section chunking, metadata extraction, indexing), `vector_store` (SQLite records, exact cosine search with NumPy), `job_matcher` (JD parsing, hybrid search, must-have checks), `skills_vocab` (skill aliases) |
-| `scripts/` | Sample resume generator, stability check, ranking evaluation (development tools, not part of the product) |
-| `tests/` | Offline pytest suite; `tests/fixtures/` holds 12 sample resumes and 3 sample JDs |
+| `scripts/` | Sample resume generator, stability checks (screening, requirements), ranking evaluation (development tools, not part of the product) |
+| `tests/` | Offline pytest suite; `tests/fixtures/` holds 12 sample resumes and 7 sample JDs |
 
 ## Sample data
 
@@ -552,7 +574,7 @@ calls and scripts tool-calling turns, and the index is a temporary one built
 with a hashing embedder. It covers:
 - the retrieval engine (file reading, chunking, metadata extraction, indexing, hybrid search);
 - the vector store (exact nearest neighbours against brute force, persistence, concurrent use);
-- requirement extraction and the knockout policy;
+- requirement extraction and the rules (different model readings of the same JD must agree);
 - every guardrail;
 - the three rounds;
 - refinement diffs;

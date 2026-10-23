@@ -4,10 +4,9 @@ import pytest
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from profile_matching import prompts
-from profile_matching.rag import job_matcher, resume_rag
+from profile_matching.rag import job_matcher, resume_rag, skills_vocab
 from profile_matching.requirements import (
     alternative_skills,
-    apply_rule_floor,
     degree_required,
     extract_requirements,
 )
@@ -123,36 +122,117 @@ def test_extract_sends_prompt_and_text_to_the_model():
     assert isinstance(messages[1], HumanMessage) and messages[1].content == jd
 
 
-def test_rule_floor_adds_years_and_missed_skills_as_nice_to_have():
+def _must(*skills, years=None) -> list[dict]:
+    years = years or {}
+    return [{"skill": s, "min_years": years.get(s)} for s in skills]
+
+
+def _decided(req: Requirements) -> tuple:
+    """What the rules make stable: must-haves with years, skill nice-to-haves, total years, degree."""
+    return (tuple((r.skill, r.min_years) for r in req.must_have),
+            tuple(s for s in req.nice_to_have if s in skills_vocab.SKILLS), req.min_total_years, req.min_degree)
+
+
+# Answers models actually gave for the same text (gpt-5.6-terra and gpt-6-luna, live): they
+# differ in years, total years, optional skills and wording, and must all come out the same.
+DIFFERENT_READINGS = {
+    "fullstack_engineer.txt": [
+        dict(must_have=_must("React", "Node.js", "TypeScript", years={"React": 3, "Node.js": 3}),
+             nice_to_have=["PostgreSQL", "MongoDB", "Docker", "AWS", "GraphQL", "Next.js"]),
+        dict(must_have=_must("React", "Node.js", "TypeScript"), nice_to_have=["GraphQL"], min_total_years=3),
+    ],
+    "ios_engineer.txt": [
+        dict(must_have=_must("Swift", "SwiftUI", "XCTest", years={"Swift": 4}), nice_to_have=["iOS development", "Firebase"]),
+        dict(must_have=_must("SwiftUI", "XCTest", "Swift"), nice_to_have=["Objective-C"], min_degree="Master's"),
+    ],
+    "java_backend.txt": [
+        dict(must_have=_must("Java", "Spring Boot", "Kafka", "Oracle", "PostgreSQL", "CI/CD"), nice_to_have=["Kubernetes"],
+             min_total_years=6, min_degree="Bachelor's"),
+        dict(must_have=_must("Java", "Spring Boot", "Kafka", "Relational Databases"), nice_to_have=["trade settlement"]),
+    ],
+    "senior_python_ml.txt": [
+        dict(must_have=_must("Machine Learning", "NLP", "Python", "scikit-learn", years={"Python": 5})),
+        dict(must_have=_must("Python", "scikit-learn", "NLP", "Machine Learning", "LLMs", years={"Python": 6}),
+             nice_to_have=["model deployment"], min_total_years=5),
+    ],
+    "data_engineer.txt": [
+        dict(must_have=_must("Python", "SQL", "Airflow", years={"Python": 4}), nice_to_have=["cloud data warehousing"]),
+        dict(must_have=_must("Python", "SQL", "Snowflake"), nice_to_have=["Airflow", "dbt"]),  # Airflow stands alone
+    ],
+}
+
+
+@pytest.mark.parametrize("jd", sorted(DIFFERENT_READINGS))
+def test_rules_make_different_readings_agree(jd):
+    text = (JD_DIR / jd).read_text()
+    results = {_decided(extract_requirements(text, model=_fake(_requirements(**reading))))
+               for reading in DIFFERENT_READINGS[jd]}
+    assert len(results) == 1, results
+
+
+def test_rules_on_the_frontend_jd():
     jd = (JD_DIR / "frontend_react.txt").read_text()
-    llm_answer = _requirements(
-        must_have=[
-            {"skill": "React", "min_years": None},
-            {"skill": "TypeScript", "min_years": 3},
-            {"skill": "CSS", "min_years": None},
-        ],
-        nice_to_have=["Tailwind CSS", "Jest", "Next.js", "GraphQL"],
-    )
+    llm_answer = _requirements(must_have=_must("React", "TypeScript", "CSS", years={"TypeScript": 2}),
+                               nice_to_have=["Tailwind CSS", "web accessibility (WCAG)"])
     req = extract_requirements(jd, model=_fake(llm_answer))
-    # "3+ years of experience with React and TypeScript": the rules tie 3 years to React.
+    # "3+ years of experience with React and TypeScript": the years go to both skills it names.
     assert [(r.skill, r.min_years) for r in req.must_have] == [("React", 3), ("TypeScript", 3), ("CSS", None)]
-    # The LLM skipped Cypress; the floor keeps it, but only as nice-to-have.
-    assert "Cypress" in req.nice_to_have and "Cypress" not in req.must_have_skills
+    # Every other skill in the text, in text order, then the model's other preferences.
+    assert req.nice_to_have == ["Tailwind CSS", "Jest", "Cypress", "Next.js", "GraphQL", "web accessibility (WCAG)"]
+
+
+@pytest.mark.parametrize("text, must, skill_years, total", [
+    ("Find me candidates with React and 3+ years experience", ["React"], {"React": 3}, None),
+    ("Senior Python backend engineer with Django and PostgreSQL, 5+ years", ["Python", "Django", "PostgreSQL"], {}, 5),
+    ("Requirements:\n- 6+ years of professional software development experience\n- Java", ["Java"], {}, 6),
+    ("Requirements:\n- 3+ years of full-stack experience with React and Node.js", ["React", "Node.js"],
+     {"React": 3, "Node.js": 3}, None),
+    ("You have at least 5 years of experience operating infrastructure, and you have run Kubernetes.",
+     ["Kubernetes"], {}, 5),
+    ("Requirements:\n- Python: 4+ years\n- 2+ years of Go is a plus", ["Python"], {"Python": 4}, None),
+])
+def test_years_come_from_the_text(text, must, skill_years, total):
+    req = extract_requirements(text, model=_fake(_requirements(must_have=_must(*must), min_total_years=99)))
+    assert {r.skill: r.min_years for r in req.must_have if r.min_years} == skill_years
+    assert req.min_total_years == total
+
+
+def test_years_written_in_words_keep_the_models_reading():
+    llm_answer = _requirements(must_have=_must("Python", years={"Python": 5}), min_total_years=8)
+    req = extract_requirements("Python developer with five years of Python and eight overall", model=_fake(llm_answer))
+    assert req.must_have[0].min_years == 5 and req.min_total_years == 8
+
+
+@pytest.mark.parametrize("line", [
+    "Familiarity with Kubernetes", "Kubernetes is a plus", "Kubernetes or similar orchestration",
+    "Experience with an orchestrator such as Kubernetes or Nomad", "Exposure to Kubernetes would be great",
+])
+def test_optional_or_alternative_skills_are_never_must_haves(line):
+    req = extract_requirements(f"Requirements:\n- Python\n- {line}", model=_fake(_requirements(must_have=_must("Kubernetes"))))
+    assert req.must_have_skills == ["Python"] and "Kubernetes" in req.nice_to_have
+
+
+def test_only_the_requirements_section_makes_must_haves():
+    jd = (JD_DIR / "senior_python_ml.txt").read_text()  # "About the role" mentions NLP and LLMs
+    req = extract_requirements(jd, model=_fake(_requirements(must_have=_must("LLMs", "Python"))))
+    assert "LLMs" not in req.must_have_skills and "LLMs" in req.nice_to_have
+    # Requirements naming one skill demand it even when the model left it out.
+    assert req.must_have_skills == ["Python", "scikit-learn"]
+
+
+def test_in_prose_a_lone_mention_is_left_to_the_model():
+    jd = (JD_DIR / "devops_sre.txt").read_text()
+    req = extract_requirements(jd, model=_fake(_requirements(must_have=_must("Terraform"))))
+    assert req.must_have_skills == ["Terraform"] and req.min_total_years == 5
+    assert {"Kubernetes", "Python", "Go", "Helm"} <= set(req.nice_to_have)
 
 
 def test_rule_floor_never_adds_thresholds_the_llm_left_out():
     jd = "Python developer.\nRequirements:\n- 5+ years of Python\n- Bachelor's degree or equivalent experience"
-    llm_answer = _requirements(must_have=[{"skill": "Python", "min_years": 5}])
+    llm_answer = _requirements(must_have=[{"skill": "Python", "min_years": 5}], min_degree="Bachelor's")
     req = extract_requirements(jd, model=_fake(llm_answer))
     assert req.min_degree is None
     assert req.min_total_years is None
-
-
-def test_rule_floor_keeps_llm_years_over_rule_years():
-    rules = {"required_skills": ["Python"], "preferred_skills": [],
-             "must_haves": [{"type": "skill_years", "skill": "Python", "min_years": 2}]}
-    req = apply_rule_floor(_requirements(must_have=[{"skill": "Python", "min_years": 6}]), rules)
-    assert req.must_have[0].min_years == 6
 
 
 # --- knockout policy -------------------------------------------------------------------------
@@ -164,6 +244,7 @@ def test_rule_floor_keeps_llm_years_over_rule_years():
         ("Hands-on experience with PyTorch or TensorFlow and scikit-learn", {"pytorch", "tensorflow"}),
         ("Kafka and relational databases (Oracle or PostgreSQL)", {"oracle", "postgresql"}),
         ("Testing with Jest or Cypress", {"jest", "cypress"}),
+        ("A warehouse such as Snowflake or BigQuery", {"snowflake"}),
         ("Strong Java and Spring Boot skills", set()),
         ("Bachelor's or Master's degree", set()),
     ],
@@ -187,7 +268,7 @@ def test_degree_required(jd, required):
 
 
 def test_policy_corrects_llm_knockouts_on_java_jd():
-    """The live gpt-4o-mini answer for java_backend.txt, before the policy ran."""
+    """The live gpt-4o-mini answer for java_backend.txt, before the rules ran."""
     jd = (JD_DIR / "java_backend.txt").read_text()
     llm_answer = _requirements(
         role_title="Backend Java Engineer (Payments)",
@@ -198,8 +279,9 @@ def test_policy_corrects_llm_knockouts_on_java_jd():
         min_degree="Bachelor's",
     )
     req = extract_requirements(jd, model=_fake(llm_answer))
-    assert req.must_have_skills == ["Java", "Spring Boot", "Kafka", "CI/CD"]
-    assert {"Oracle", "PostgreSQL", "Kubernetes"} <= set(req.nice_to_have)
+    # Oracle / PostgreSQL are options; "Familiarity with Kubernetes and CI/CD" is softened.
+    assert req.must_have_skills == ["Java", "Spring Boot", "Kafka"]
+    assert {"Oracle", "PostgreSQL", "Kubernetes", "CI/CD"} <= set(req.nice_to_have)
     assert req.min_degree is None  # "Bachelor's degree ... or equivalent"
     assert req.min_total_years == 6
 

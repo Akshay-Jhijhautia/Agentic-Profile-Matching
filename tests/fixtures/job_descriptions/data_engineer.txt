@@ -1,0 +1,14 @@
+Data Engineer, Analytics Platform
+
+We move billions of events a day from our apps into a warehouse that every team relies on.
+
+Requirements:
+- 4+ years of experience building data pipelines in Python
+- Strong SQL and experience with Spark or Databricks
+- Orchestration with Airflow
+- Experience with a cloud data warehouse such as Snowflake or BigQuery
+
+Nice to have:
+- dbt for transformations
+- Kafka or Kinesis for streaming
+- Terraform

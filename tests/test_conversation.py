@@ -90,7 +90,7 @@ def test_conversational_graph_has_the_feedback_loop(services):
 
 
 def test_first_request_runs_the_pipeline_then_waits_for_feedback(chat):
-    chat.send("Find me a Python backend engineer")
+    chat.send("Find me a Python backend engineer; Django is a plus")
     assert chat.graph.get_state(chat.config).next == ("human_feedback",)
     assert not chat.finished
     assert state(chat)["requirements"] == ROLE and chat.report.startswith("# Shortlist")
@@ -100,7 +100,7 @@ def test_first_request_runs_the_pipeline_then_waits_for_feedback(chat):
 
 
 def test_compare_request_uses_the_tool_loop(chat, services):
-    chat.send("Find me a Python backend engineer")
+    chat.send("Find me a Python backend engineer; Django is a plus")
     top3 = [m.id for m in state(chat)["shortlist"][:3]]
     services.model.replies = [
         tool_call("compare_candidates", {"candidate_ids": top3}),
@@ -135,7 +135,7 @@ def test_a_question_before_any_search_goes_to_the_assistant(chat, services):
 
 @pytest.mark.parametrize("farewell", ["bye", "Exit", "done!", "goodbye for now"])
 def test_ending_the_conversation(chat, farewell):
-    chat.send("Find me a Python backend engineer")
+    chat.send("Find me a Python backend engineer; Django is a plus")
     chat.send(farewell)
     assert chat.finished
 
@@ -205,7 +205,7 @@ def test_router_handles_exit_words_without_the_model(services):
 
 
 def test_repl_commands_and_conversation(chat, monkeypatch):
-    inputs = iter(["", "/help", "/report", "Find me a Python backend engineer", "/reset", "/report", "/exit"])
+    inputs = iter(["", "/help", "/report", "Find me a Python backend engineer; Django is a plus", "/reset", "/report", "/exit"])
     monkeypatch.setattr(builtins, "input", lambda *_: next(inputs))
     console = chat.console
     assert cli.run(chat.graph, "gpt-test", console=console) == 0
@@ -218,7 +218,7 @@ def test_repl_commands_and_conversation(chat, monkeypatch):
 
 
 def test_repl_stops_when_the_conversation_ends(chat, monkeypatch):
-    inputs = iter(["Find me a Python backend engineer", "goodbye"])
+    inputs = iter(["Find me a Python backend engineer; Django is a plus", "goodbye"])
     monkeypatch.setattr(builtins, "input", lambda *_: next(inputs))
     assert cli.run(chat.graph, "gpt-test", console=chat.console) == 0
     assert output(chat).rstrip().endswith("Goodbye!")
@@ -249,7 +249,7 @@ def refine_router(messages) -> IntentDecision:
 def test_refinement_reranks_and_explains_the_changes(chat, services):
     services.model.responses[IntentDecision] = refine_router
     services.model.responses[ChangeNarrative] = ChangeNarrative(narrative="Django is now required.")
-    chat.send("Find me a Python backend engineer")
+    chat.send("Find me a Python backend engineer; Django is a plus")
     before = state(chat)["shortlist"]
     services.model.responses[Requirements] = DJANGO_MUST
     chat.send("Make Django a must-have")
@@ -280,10 +280,10 @@ def test_refinement_reranks_and_explains_the_changes(chat, services):
 def test_new_search_after_a_refinement_has_no_changes_section(chat, services):
     services.model.responses[IntentDecision] = refine_router
     services.model.responses[ChangeNarrative] = ChangeNarrative(narrative="Django is now required.")
-    chat.send("Find me a Python backend engineer")
+    chat.send("Find me a Python backend engineer; Django is a plus")
     services.model.responses[Requirements] = DJANGO_MUST
     chat.send("Make Django a must-have")
-    chat.send("Find me a Python backend engineer")  # extraction now answers DJANGO_MUST again
+    chat.send("Find me a Python backend engineer; Django is a plus")  # extraction now answers DJANGO_MUST again
     assert "## What changed" not in state(chat)["report"]
 
 
@@ -294,7 +294,7 @@ def test_refine_without_a_role_starts_a_new_search(services):
 
 
 def test_candidate_reports_are_shown_verbatim(chat, services):
-    chat.send("Find me a Python backend engineer")
+    chat.send("Find me a Python backend engineer; Django is a plus")
     top = state(chat)["shortlist"][0]
     services.model.replies = [
         tool_call("get_candidate_report", {"candidate_id": top.id}),
@@ -330,7 +330,7 @@ def test_resumes_command_loads_a_folder_without_the_model(chat, services, applic
 
 
 def test_loading_a_folder_rescreens_the_current_role(chat, services, applicants):
-    chat.send("Find me a Python backend engineer")
+    chat.send("Find me a Python backend engineer; Django is a plus")
     assert len(state(chat)["candidates"]) == 12
     chat.send(f"/resumes {applicants}")
     values = state(chat)
@@ -380,7 +380,7 @@ def downloads(tmp_path):
 
 def test_a_role_without_resumes_waits_for_them(chat, services, downloads):
     services.pool = None
-    chat.send("Find me a Python backend engineer")
+    chat.send("Find me a Python backend engineer; Django is a plus")
     reply = state(chat)["messages"][-1].text
     assert "No resumes are loaded yet" in reply and "Python Backend Engineer" in reply
     assert not state(chat).get("candidates")

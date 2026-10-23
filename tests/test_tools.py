@@ -122,10 +122,11 @@ def test_rag_search_validates_k(tools, k):
 
 
 def test_extract_requirements_reads_a_jd_file(tools, services):
-    services.model = FakeChatModel({Requirements: DJANGO_ROLE})
+    services.model = FakeChatModel({Requirements: _role(must_have=[{"skill": "Java", "min_years": None}])})
     path = JD_DIR / "java_backend.txt"
     result = tools["extract_requirements"].invoke({"jd": str(path)})
-    assert result["must_have"] == [{"skill": "Django", "min_years": None}]
+    # The model's reading, completed by the rules: "Experience with Kafka ..." names Kafka alone.
+    assert [r["skill"] for r in result["must_have"]] == ["Java", "Kafka"] and result["min_total_years"] == 6
     _, messages = services.model.calls[0]
     assert messages[1].content == path.read_text().strip()
 
