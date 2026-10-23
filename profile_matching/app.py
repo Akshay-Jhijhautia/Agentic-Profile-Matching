@@ -5,7 +5,8 @@
     profile-match index    FOLDER [--embedder local|openai|hashing]  index or refresh a resume folder
     profile-match list     FOLDER                                 candidates indexed from a folder
     profile-match sessions [--delete ID]                          saved chat sessions
-    profile-match clean    [--older-than DAYS] [--yes]            remove old uploads, indexes, sessions
+    profile-match clean    [--older-than DAYS] [--yes]            remove old uploads, indexes, sessions, answers
+    profile-match cache    [--clear]                              stored model answers (reproducible runs)
     profile-match --version
 
 PATH is a folder of resumes or one or more resume files (files are copied
@@ -25,6 +26,8 @@ from pathlib import Path
 from . import __version__, cli, maintenance, pools, providers, sessions
 from .agent.graph import build_graph, screen
 from .config import get_settings
+from .llm_cache import ResponseCache
+from .rag import resume_rag
 from .services import Services
 
 DEFAULT_CLEAN_DAYS = 30
@@ -183,6 +186,25 @@ def clean(argv: list[str]) -> int:
     return 0
 
 
+def cache(argv: list[str]) -> int:
+    parser = _parser("cache", "Stored model answers: the same question always gets the same answer.")
+    parser.add_argument("--clear", action="store_true", help="Delete every stored answer; the model is asked again.")
+    args = parser.parse_args(argv)
+    settings = get_settings()
+    store = ResponseCache(settings.llm_cache_db)
+    if args.clear:
+        print(f"Deleted {store.clear()} stored answers.")
+        return 0
+    stats = store.stats()
+    print(f"{stats.answers} stored model answers, reused {stats.reused} times, {stats.size_mb:.1f} MB "
+          f"in {resume_rag.display_path(str(store.path))}.")
+    for kind, count in stats.by_kind.items():
+        print(f"  {kind:<24} {count}")
+    if not settings.llm_cache:
+        print("LLM_CACHE is off: screenings ask the model every time.")
+    return 0
+
+
 # --- entry point ----------------------------------------------------------------------------------------
 
 # Command name -> handler taking the remaining arguments.
@@ -193,6 +215,7 @@ COMMANDS: dict[str, Callable[[list[str]], int]] = {
     "list": list_candidates,
     "sessions": list_sessions,
     "clean": clean,
+    "cache": cache,
 }
 
 

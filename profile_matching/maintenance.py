@@ -1,4 +1,5 @@
-"""Cleaning up local data: old upload batches, orphaned indexes and old sessions.
+"""Cleaning up local data: old upload batches, orphaned indexes, old sessions and
+stored model answers no screening has used for a while.
 
 Also the ChromaDB files that versions before 1.1 kept in the index folder; the
 current index (``vector_store.DB_FILE``) replaced them, and folders re-index
@@ -18,6 +19,7 @@ from pathlib import Path
 
 from . import sessions
 from .config import Settings
+from .llm_cache import ResponseCache
 from .pools import pool_name
 from .rag.vector_store import DB_FILE, VectorStore
 
@@ -27,12 +29,13 @@ LEGACY_CHROMA_FILE = "chroma.sqlite3"
 
 @dataclass(frozen=True)
 class Stale:
-    kind: str  # "uploads", "index" or "session"
+    kind: str  # "uploads", "index", "session" or "cache"
     name: str
     detail: str
     paths: tuple[Path, ...] = ()  # files and folders to delete
     collection: str | None = None  # index to drop
     session_id: str | None = None
+    unused_days: int | None = None  # stored model answers unused for this long
 
     def line(self) -> str:
         return f"{self.kind:<8} {self.name}  ({self.detail})"
@@ -103,6 +106,12 @@ def find_stale(settings: Settings, older_than_days: int) -> list[Stale]:
             if updated.replace(tzinfo=None) < cutoff:
                 age = (datetime.now() - updated.replace(tzinfo=None)).days
                 stale.append(Stale("session", session_id, f"last used {age} days ago", session_id=session_id))
+
+    if Path(settings.llm_cache_db).expanduser().exists():
+        unused = ResponseCache(settings.llm_cache_db).unused_since(older_than_days)
+        if unused:
+            stale.append(Stale("cache", f"{unused} stored model answers", f"unused for {older_than_days}+ days",
+                               unused_days=older_than_days))
     return stale
 
 
@@ -119,3 +128,5 @@ def remove(settings: Settings, items: list[Stale]) -> None:
             store.delete_collection(item.collection)
         if item.session_id:
             sessions.delete_session(saver, item.session_id)
+        if item.unused_days is not None:
+            ResponseCache(settings.llm_cache_db).remove_unused(item.unused_days)

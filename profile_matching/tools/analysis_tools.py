@@ -28,7 +28,7 @@ def make_analysis_tools(services: Services) -> list[BaseTool]:
             jd: Job description text, a short request ("React and 3+ years"), or a path to a JD file.
         """
         text = requirements.load_job_description(jd)
-        return requirements.extract_requirements(text, model=services.model).model_dump()
+        return requirements.extract_requirements(text, model=services.model, cache=services.llm_cache).model_dump()
 
     @agent_tool
     def compare_candidates(candidate_ids: list[str], state: Annotated[dict, InjectedState]) -> dict:

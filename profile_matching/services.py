@@ -20,6 +20,7 @@ from langchain_core.language_models import BaseChatModel
 from . import pools, providers
 from .candidates import CandidateDirectory
 from .config import Settings, get_settings
+from .llm_cache import ResponseCache
 from .pools import IntakeReport, ResumePool
 from .rag import job_matcher, resume_rag
 
@@ -30,6 +31,8 @@ class Services:
     settings: Settings = field(default_factory=get_settings)
     # None means ``llm.get_chat_model()``, the configured provider's model.
     model: BaseChatModel | None = None
+    # Stored model answers (None: always ask the model).
+    llm_cache: ResponseCache | None = None
 
     def _active(self) -> ResumePool:
         if self.pool is None:
@@ -91,4 +94,6 @@ class Services:
     @classmethod
     def from_settings(cls, settings: Settings | None = None) -> Services:
         """Services with no pool loaded yet (call ``use_folder``)."""
-        return cls(settings=settings or get_settings())
+        settings = settings or get_settings()
+        cache = ResponseCache(settings.llm_cache_db) if settings.llm_cache else None
+        return cls(settings=settings, llm_cache=cache)

@@ -167,6 +167,20 @@ def create_chat_model(provider: Provider, model: str, settings: Settings) -> Bas
     return provider.model_type()(model=model, **kwargs)
 
 
+def model_identity(model: Any) -> str:
+    """Which model answers, as far as it changes the answer: provider, model name, endpoint
+    and temperature (``"openai:gpt-5.6-terra"``). Part of every cache key."""
+    root = type(model).__module__.partition(".")[0]
+    provider = next((p.name for p in PROVIDERS.values() if root in p.modules), type(model).__name__)
+    name = getattr(model, "model_name", None) or getattr(model, "model", None) or "?"
+    identity = f"{provider}:{name}"
+    endpoint = getattr(model, "openai_api_base", None) or getattr(model, "base_url", None)
+    if endpoint:
+        identity += f"@{endpoint}"
+    temperature = getattr(model, "temperature", None)
+    return identity if temperature is None else f"{identity} temperature={temperature}"
+
+
 def structured_options(model: Any) -> dict[str, Any]:
     """Extra ``with_structured_output`` arguments for ``model``'s provider (none for unknown models)."""
     root = type(model).__module__.partition(".")[0]

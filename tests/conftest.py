@@ -1,10 +1,20 @@
 import pytest
 
+from profile_matching import config
 from profile_matching.config import Settings
 from profile_matching.rag import job_matcher, resume_rag
 from profile_matching.pools import ResumePool
 from profile_matching.services import Services
 from tests.paths import RESUMES_DIR
+
+
+@pytest.fixture(autouse=True)
+def isolated_home(monkeypatch, tmp_path):
+    """Settings read from the environment use a temporary data home, never ~/.profile-match."""
+    monkeypatch.setenv("PROFILE_MATCH_HOME", str(tmp_path / "profile-match-home"))
+    config.get_settings.cache_clear()
+    yield
+    config.get_settings.cache_clear()
 
 
 @pytest.fixture(autouse=True)

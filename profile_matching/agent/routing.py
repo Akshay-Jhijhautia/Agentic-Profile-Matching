@@ -52,7 +52,7 @@ class IntentRouter:
             f"Previous assistant message: {last_ai_text(state)[:CONTEXT_CHARS] or 'none'}",
             f"Latest user message: {text}",
         ])
-        decision = llm.structured(IntentDecision, prompts.ROUTE_INTENT, routing_input, model=self.services.model)
+        decision = llm.structured(IntentDecision, prompts.ROUTE_INTENT, routing_input, model=self.services.model, cache=self.services.llm_cache)
         intent = decision.intent
         if intent == "refine" and requirements is None:
             intent = "new_search"  # nothing to refine yet: the message describes a role

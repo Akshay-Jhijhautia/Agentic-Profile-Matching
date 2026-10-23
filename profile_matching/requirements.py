@@ -34,6 +34,7 @@ from pathlib import Path
 from langchain_core.language_models import BaseChatModel
 
 from . import llm, prompts
+from .llm_cache import ResponseCache
 from .rag import fs_tools, job_matcher, skills_vocab
 from .schemas import Requirements, SkillRequirement
 
@@ -264,9 +265,11 @@ def load_job_description(text_or_path: str) -> str:
     return text_or_path
 
 
-def extract_requirements(text: str, *, model: BaseChatModel | None = None) -> Requirements:
+def extract_requirements(
+    text: str, *, model: BaseChatModel | None = None, cache: ResponseCache | None = None
+) -> Requirements:
     """Must-have and nice-to-have requirements for a JD or a short request."""
     if not text or not text.strip():
         raise ValueError("Job description must be a non-empty string")
-    proposed = llm.structured(Requirements, prompts.EXTRACT_REQUIREMENTS, text.strip(), model=model)
+    proposed = llm.structured(Requirements, prompts.EXTRACT_REQUIREMENTS, text.strip(), model=model, cache=cache)
     return apply_rules(proposed, text)

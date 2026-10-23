@@ -96,6 +96,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("need at least two runs in total")
     try:
         services = Services.from_settings()
+        services.llm_cache = None  # this measures the model's own variance: always ask it
         print(services.use_folder(args.resumes).summary(), file=sys.stderr)
         services.check_ready()
     except providers.cli_errors() as exc:

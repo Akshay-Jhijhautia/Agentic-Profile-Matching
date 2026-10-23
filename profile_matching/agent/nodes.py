@@ -35,7 +35,7 @@ class PipelineNodes:
 
     def extract_requirements(self, state: AgentState) -> dict:
         """Split the JD into must-have and nice-to-have requirements."""
-        requirements = extract_requirements(state["job_description"], model=self.services.model)
+        requirements = extract_requirements(state["job_description"], model=self.services.model, cache=self.services.llm_cache)
         questions = [q.line() for q in open_questions(state["job_description"], requirements)]
         # A new search starts a new ranking: earlier refinement changes no longer apply.
         return {"requirements": requirements, "requirements_history": [requirements], "ranking_diff": None,
@@ -45,7 +45,7 @@ class PipelineNodes:
         """Apply the user's change to the current requirements, as a new version."""
         current = state["requirements"]
         instruction = f"Current requirements:\n{current.model_dump_json()}\n\nInstruction: {last_human_text(state)}"
-        updated = llm.structured(Requirements, prompts.REFINE_REQUIREMENTS, instruction, model=self.services.model)
+        updated = llm.structured(Requirements, prompts.REFINE_REQUIREMENTS, instruction, model=self.services.model, cache=self.services.llm_cache)
         # The recruiter has now decided the requirements: nothing is left open.
         return {"requirements": updated, "requirements_history": [updated], "open_questions": []}
 
@@ -151,7 +151,7 @@ class PipelineNodes:
             return "The requirements did not change, so neither did the ranking."
         moved = diff.of_kind("new", "dropped", "up", "down")
         payload = diff.model_copy(update={"changes": moved}).model_dump_json()
-        return llm.structured(ChangeNarrative, prompts.EXPLAIN_CHANGES, payload, model=self.services.model).narrative
+        return llm.structured(ChangeNarrative, prompts.EXPLAIN_CHANGES, payload, model=self.services.model, cache=self.services.llm_cache).narrative
 
 
 class ConversationNodes:

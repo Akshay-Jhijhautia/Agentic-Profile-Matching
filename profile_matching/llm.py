@@ -9,6 +9,7 @@ from the configured provider (see ``providers``); nothing here is specific to on
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 from typing import TypeVar
 
@@ -21,6 +22,7 @@ from pydantic import BaseModel, ValidationError
 
 from . import providers
 from .config import get_settings
+from .llm_cache import ResponseCache, cache_key
 from .rag import resume_rag
 
 T = TypeVar("T", bound=BaseModel)
@@ -45,13 +47,43 @@ def get_chat_model() -> BaseChatModel:
     return make_chat_model()
 
 
-def structured(schema: type[T] | dict, system: str, user: str, *, model: BaseChatModel | None = None) -> T | dict:
+def structured(
+    schema: type[T] | dict, system: str, user: str, *,
+    model: BaseChatModel | None = None, cache: ResponseCache | None = None,
+) -> T | dict:
     """Ask the model for an instance of ``schema`` (a dict for a JSON-schema dict).
 
     An answer that does not validate against the schema is retried once, with
-    the validation error shown to the model, before the error is raised.
+    the validation error shown to the model, before the error is raised. With a
+    ``cache``, a question asked before gets the same answer (see ``llm_cache``).
     """
     model = model or get_chat_model()
+    if cache is None:
+        return _ask(schema, system, user, model)
+    identity = providers.model_identity(model)
+    key = cache_key(identity, schema if isinstance(schema, dict) else schema.model_json_schema(), system, user)
+    stored = cache.get(key)
+    if stored is not None:
+        try:
+            return _load(schema, stored)
+        except ValueError:  # unreadable (e.g. edited by hand): ask again and replace it
+            pass
+    answer = _ask(schema, system, user, model)
+    kind = schema.get("title", "json") if isinstance(schema, dict) else schema.__name__
+    stored = cache.put(key, model=identity, kind=kind, request={"system": system, "user": user},
+                       answer=_dump(answer), replace=stored is not None)
+    return _load(schema, stored)
+
+
+def _dump(answer: BaseModel | dict) -> str:
+    return answer.model_dump_json() if isinstance(answer, BaseModel) else json.dumps(answer)
+
+
+def _load(schema: type[T] | dict, stored: str) -> T | dict:
+    return json.loads(stored) if isinstance(schema, dict) else schema.model_validate_json(stored)
+
+
+def _ask(schema: type[T] | dict, system: str, user: str, model: BaseChatModel) -> T | dict:
     runnable = model.with_structured_output(schema, **providers.structured_options(model))
     messages = [SystemMessage(content=system), HumanMessage(content=user)]
     for attempt in range(1, STRUCTURED_ATTEMPTS + 1):

@@ -78,7 +78,8 @@ From a source checkout, `python main.py ...` runs the same commands.
 | `profile-match index FOLDER [--embedder local\|openai\|hashing]` | Index or refresh a folder without screening |
 | `profile-match list FOLDER` | The candidates indexed from a folder |
 | `profile-match sessions [--delete ID]` | Saved chat sessions, newest first: id, date, role, resumes |
-| `profile-match clean [--older-than DAYS] [--yes]` | Old upload batches and sessions (default 30 days), indexes of deleted folders, and a ChromaDB index left by versions before 1.1; lists them, deletes with `--yes` |
+| `profile-match clean [--older-than DAYS] [--yes]` | Old upload batches and sessions (default 30 days), stored model answers unused that long, indexes of deleted folders, and a ChromaDB index left by versions before 1.1; lists them, deletes with `--yes` |
+| `profile-match cache [--clear]` | Stored model answers (see [Reproducible results](#reproducible-results)); `--clear` deletes them |
 | `profile-match --version` | The installed version |
 
 ### Local data
@@ -92,6 +93,7 @@ Everything the tool keeps lives in one folder, `~/.profile-match`
 | `models/` | The local embedding model, downloaded on first use |
 | `uploads/` | Copies of resumes given as files, one batch per chat or file set |
 | `sessions.sqlite` | Saved chat sessions (LangGraph checkpoints) |
+| `llm_cache.sqlite` | Stored model answers, so a repeated screening gives the same result |
 | `.env` | Optional settings, e.g. `OPENAI_API_KEY` |
 
 Every chat is saved as it goes. `profile-match chat --session <id>` restores
@@ -348,6 +350,29 @@ python -m scripts.stability_check tests/fixtures/job_descriptions/frontend_react
 `--models` also takes `provider:model`, to compare providers
 (`--models gpt-5.6-terra,anthropic:claude-opus-5-5`).
 
+## Reproducible results
+
+Every structured model answer (requirements, deep reviews, hire rationales,
+improvement suggestions, comparisons, interview questions, routing) is stored
+in `llm_cache.sqlite`, keyed by everything that shapes it: provider, model,
+temperature, output schema, the full prompt and the input. Asking the same
+question again returns the stored answer, so:
+
+- **the same screening gives the same result**, in every run and session (live:
+  identical reports, 27 s for the first run, 0.9 s for the second);
+- a changed job description, resume, prompt, model or setting is a new question
+  and is answered fresh;
+- guardrails and scoring still run on the stored answer, so improvements to
+  them apply to earlier answers too;
+- each entry keeps the request, the answer, the model, when it was made and how
+  often it was reused: an audit trail of what the model was asked and said.
+
+`profile-match cache` shows what is stored, `profile-match cache --clear`
+forgets it, and `clean` removes answers unused for 30 days. `LLM_CACHE=false`
+asks the model every time; `scripts/stability_check.py` always does, since it
+measures the model's own variance. Free-form chat replies are not stored. The
+cache holds resume text, like the index, and stays on your machine.
+
 ## Iterative refinement
 
 "Make Kubernetes a must-have", "5+ years of React instead", "drop the degree
@@ -529,6 +554,7 @@ other embeddings is re-indexed automatically the next time it is used.
 | `SHORTLIST_SIZE` | `10` | Candidates kept after round 1 |
 | `SCREENING_ROUNDS` | `3` | 1: retrieval only; 2: + deep analysis; 3: + hire / no-hire |
 | `SAVE_REPORTS` | `true` | Save reports after every screening |
+| `LLM_CACHE` / `LLM_CACHE_DB` | `true` / `~/.profile-match/llm_cache.sqlite` | Reuse the model's answer to a question asked before |
 
 Settings come from the environment, then `./.env`, then
 `~/.profile-match/.env`. The older `OPENAI_MODEL`, `OPENAI_TEMPERATURE`,
@@ -559,6 +585,7 @@ need a chat model (a local Ollama model works without one).
 | `profile_matching/tools/` | Agent tools, built per `Services` by factories |
 | `profile_matching/cli.py` | Rich terminal chat driving the human feedback loop |
 | `profile_matching/llm.py` | The single path to the chat model: `structured(...)`, `with_tools(...)` |
+| `profile_matching/llm_cache.py` | Stored model answers: the same question always gets the same answer, with an audit trail |
 | `profile_matching/providers.py` | Chat model providers: how each is built, its key, its quirks, its error messages |
 | `profile_matching/schemas.py` | Pydantic models shared across the agent |
 | `profile_matching/prompts.py` | All prompt templates |
@@ -657,9 +684,9 @@ knockouts, rankings and scores for all 100 candidates in every query.
   decisions agreed in the comparison above; candidates on the hire line can
   go either way, as they can between two runs of the same model.
 - **Chat models can disagree** on candidates near the hire threshold, and only
-  OpenAI's models have been measured (see the stability check). Next steps:
-  - letting rules decide or recruiters confirm the extracted requirements;
-  - a reproducibility cache for LLM outputs.
+  OpenAI's models have been measured (see the stability check). Rules,
+  recruiter confirmation and the answer cache make one model reproducible; a
+  different model can still judge a borderline candidate differently.
 - **Heuristic skill years.** A skill's years come from the dated roles that
   mention it, so skills listed only in a Skills section are "unverified".
 - **Blind screening isn't implemented.** Names and contact details reach the

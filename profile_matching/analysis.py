@@ -94,7 +94,7 @@ def compare_candidates(
         requirements,
         candidates=[fact | {"resume_text": services.candidates.resume_text(by_id[fact["id"]])} for fact in facts],
     )
-    verdict = llm.structured(ComparisonVerdict, prompts.COMPARE_CANDIDATES, payload, model=services.model)
+    verdict = llm.structured(ComparisonVerdict, prompts.COMPARE_CANDIDATES, payload, model=services.model, cache=services.llm_cache)
 
     # Keep the LLM's order for the ids it named, then any it left out.
     named = [i for i in dict.fromkeys(_to_id(services, ref) for ref in verdict.ranking) if i in by_id]
@@ -142,7 +142,7 @@ def generate_interview_questions(
         candidate=fact, focus_areas=focus, resume_text=services.candidates.resume_text(profile),
         question_count=count,
     )
-    result = llm.structured(InterviewQuestions, prompts.INTERVIEW_QUESTIONS, payload, model=services.model)
+    result = llm.structured(InterviewQuestions, prompts.INTERVIEW_QUESTIONS, payload, model=services.model, cache=services.llm_cache)
     return {
         "candidate": {"id": profile.id, "name": profile.name},
         "role": requirements.role_title if requirements else None,

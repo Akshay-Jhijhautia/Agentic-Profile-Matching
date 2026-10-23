@@ -92,7 +92,8 @@ def assess(services: Services, requirements: Requirements, match: CandidateMatch
         "resume_text": resume_text,
     }
     review = llm.structured(
-        DeepReview, prompts.DEEP_ASSESSMENT, json.dumps(payload, ensure_ascii=False), model=services.model
+        DeepReview, prompts.DEEP_ASSESSMENT, json.dumps(payload, ensure_ascii=False), model=services.model,
+        cache=services.llm_cache,
     )
     return guardrails.build_assessment(review, items, match, resume_text)
 
@@ -143,7 +144,7 @@ def decide(services: Services, requirements: Requirements, shortlisted: list[Can
     if not with_decision:
         return decided
     payload = _cohort_payload(requirements, with_decision)
-    result = llm.structured(HiringRationales, prompts.HIRING_RATIONALES, payload, model=services.model)
+    result = llm.structured(HiringRationales, prompts.HIRING_RATIONALES, payload, model=services.model, cache=services.llm_cache)
     rationales = by_candidate(services, result.rationales, lambda r: r.candidate_id)
     return [
         match.model_copy(update={"recommendation": match.recommendation.model_copy(
@@ -162,7 +163,7 @@ def suggest_improvements(
     if not borderline:
         return shortlisted
     payload = _cohort_payload(requirements, borderline)
-    result = llm.structured(ImprovementSuggestions, prompts.IMPROVEMENT_SUGGESTIONS, payload, model=services.model)
+    result = llm.structured(ImprovementSuggestions, prompts.IMPROVEMENT_SUGGESTIONS, payload, model=services.model, cache=services.llm_cache)
     suggestions = by_candidate(services, result.candidates, lambda c: c.candidate_id)
     return [
         match.model_copy(update={"improvements": suggestions[match.id].improvements})

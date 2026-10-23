@@ -76,6 +76,9 @@ class Settings:
     screening_rounds: int = 3
     # Save the shortlist and per-candidate reports under reports_dir after every screening.
     save_reports: bool = True
+    # Reuse the model's answer to a question asked before (see ``llm_cache``).
+    llm_cache: bool = True
+    llm_cache_db: str = str(DEFAULT_HOME / "llm_cache.sqlite")
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -102,6 +105,8 @@ class Settings:
             shortlist_size=int(os.getenv("SHORTLIST_SIZE") or defaults.shortlist_size),
             screening_rounds=int(os.getenv("SCREENING_ROUNDS") or defaults.screening_rounds),
             save_reports=_flag("SAVE_REPORTS", defaults.save_reports),
+            llm_cache=_flag("LLM_CACHE", defaults.llm_cache),
+            llm_cache_db=os.getenv("LLM_CACHE_DB") or str(home / "llm_cache.sqlite"),
         )
 
     def __post_init__(self) -> None:
