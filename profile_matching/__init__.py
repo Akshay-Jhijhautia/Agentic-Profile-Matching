@@ -1,3 +1,3 @@
-"""Agentic resume screening built on LangGraph."""
+"""Profile Match: an explainable resume-screening assistant built on LangGraph."""
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"

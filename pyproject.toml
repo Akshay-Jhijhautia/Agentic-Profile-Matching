@@ -1,19 +1,27 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]  # SPDX license expressions
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "profile-match"
 dynamic = ["version"]
-description = "AI recruiting agent for the terminal: screens resumes against a job description in three rounds and explains every score."
+description = "Explainable resume-screening assistant: ranks resumes against a job description, shows the evidence, and leaves the decision to the recruiter."
 readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Akshay Jhijhautia" }]
-keywords = ["resume-screening", "recruitment", "llm-agent", "langgraph", "rag", "explainable-ai", "cli"]
+keywords = ["resume-screening", "recruitment", "llm-agent", "langgraph", "rag", "explainable-ai", "local-first", "cli"]
 classifiers = [
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Office/Business",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
@@ -48,6 +56,8 @@ profile-match = "profile_matching.app:main"
 
 [project.urls]
 Repository = "https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching"
+Changelog = "https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching/blob/main/CHANGELOG.md"
+Issues = "https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching/issues"
 
 [tool.setuptools.dynamic]
 version = { attr = "profile_matching.__version__" }

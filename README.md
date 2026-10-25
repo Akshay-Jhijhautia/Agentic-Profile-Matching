@@ -1,16 +1,16 @@
 # Profile Match
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+[![Status: developer preview](https://img.shields.io/badge/status-developer%20preview-orange.svg)](#limitations)
+
 **An open-source, explainable resume-screening assistant. It ranks and
 explains; the recruiter decides.**
 
-A LangGraph agent that screens resumes against a job description, explains every
-ranking it makes, recommends whom to interview, and refines the search through
-conversation (see [Responsible use](#responsible-use)). It is built on a
-retrieval engine (`profile_matching/rag/`):
-- file tools that read PDF, DOCX and text resumes;
-- a local index of resumes chunked by section (SQLite, exact search with NumPy), with extracted skills, experience and education;
-- local embeddings: an open-source model runs on your machine, so resumes are indexed without an API key;
-- a hybrid semantic + keyword matcher with must-have checks.
+Point it at a folder of resumes and describe the role, in one sentence or a
+full job description. Profile Match screens every resume in three rounds,
+recommends whom to interview, and shows the evidence behind every score. Then
+refine the search by talking to it:
 
 ```
 you> Find me candidates with React and 3+ years experience
@@ -21,11 +21,27 @@ you> Make TypeScript a must-have
 you> Write 3 interview questions for the top candidate
 ```
 
-| Capability | Where it lives |
-| --- | --- |
-| **Agent architecture**: state, graph, tools | `matching_agent.py` (graph), `profile_matching/agent/` (state, nodes, routing), `profile_matching/tools/` |
-| **Interactive features**: natural-language queries, refinement with re-ranking and explanations | `profile_matching/cli.py`, `agent/routing.py`, `changes.py` |
-| **Advanced capabilities**: multi-round screening, explainability | `screening.py`, `guardrails.py`, `explainability.py`, `reports.py` |
+### Why it is different
+
+- **The model judges, code decides.** The language model reads resumes and
+  quotes evidence; scores, knockouts and recommendations come from fixed,
+  auditable rules.
+- **No invented experience.** Every positive verdict needs a quote that is
+  actually in the resume, or it is downgraded.
+- **Same input, same result.** Rules settle what the job description states,
+  you confirm what it leaves open, and stored model answers make a repeated
+  screening identical.
+- **Every score is explained**: its breakdown, the evidence, strengths, gaps,
+  and what would make a borderline candidate a clear interview.
+- **Yours to run.** OpenAI, Anthropic, Gemini, Ollama or any OpenAI-compatible
+  server. Embeddings, index and data stay on your machine; with Ollama, nothing
+  leaves it.
+- **Measured, not claimed.** Ranking quality, run-to-run stability and model
+  agreement are measured with scripts in this repository, alongside 537 tests.
+
+**Status:** developer preview (v1.1, command line). Validated on synthetic
+resumes only, so read [Responsible use](#responsible-use) and
+[Limitations](#limitations) before relying on it. A web interface is next.
 
 ## Installation
 
@@ -732,3 +748,8 @@ reviewing the result.
   images aren't read; they are reported so they can be converted. Subfolders of a resume folder aren't
   read either.
 - **Uploads accumulate** until `profile-match clean` removes them.
+
+## License and security
+
+MIT, see [LICENSE](LICENSE). Report vulnerabilities privately as described in
+[SECURITY.md](SECURITY.md). Changes per version are in [CHANGELOG.md](CHANGELOG.md).

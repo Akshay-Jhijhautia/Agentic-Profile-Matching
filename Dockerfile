@@ -12,6 +12,11 @@
 #   docker run ... -e LLM_PROVIDER=anthropic -e ANTHROPIC_API_KEY -e EMBEDDER=hashing ...
 FROM python:3.13-slim
 
+LABEL org.opencontainers.image.title="Profile Match" \
+      org.opencontainers.image.description="Explainable resume-screening assistant" \
+      org.opencontainers.image.source="https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching" \
+      org.opencontainers.image.licenses="MIT"
+
 # Comma-separated pip extras, e.g. anthropic,google; none by default.
 ARG EXTRAS=
 
