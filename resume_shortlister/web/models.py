@@ -34,6 +34,29 @@ class Status(BaseModel):
     problem: str | None  # what to fix before screening, when not ready
 
 
+class StoredAnswers(BaseModel):
+    answers: int
+    reused: int  # answers given from the store instead of asking the model again
+    size_mb: float
+
+
+class SettingsView(BaseModel):
+    """The settings in effect, to read: they come from the environment and ``.env`` files."""
+
+    version: str
+    model: str  # e.g. "OpenAI gpt-5.6-terra"
+    api_key: str | None  # the variable holding the chat model's key; None when it needs none
+    api_key_set: bool
+    embeddings: str  # e.g. "local:ibm-granite/granite-embedding-small-english-r2"
+    shortlist_size: int
+    screening_rounds: int
+    interview_threshold: int  # the final score from which an interview is recommended
+    data_home: str
+    reports_dir: str
+    env_file: str  # where settings go: the data home's .env
+    stored_answers: StoredAnswers | None  # None when model answers are not stored (LLM_CACHE=false)
+
+
 class SessionSummary(BaseModel):
     id: str
     updated: datetime

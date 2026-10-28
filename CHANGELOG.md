@@ -25,6 +25,10 @@
   change the role in a chat below the shortlist, with each turn's steps,
   suggested follow-ups from the shortlist, and the confirmation card in place
   of the agent's question.
+- **Sessions and settings in the browser**: reopen, start or delete a
+  screening; see the chat model, whether its key is set, the embeddings, the
+  screening rules, where your data is and how many model answers are stored,
+  with how to change them (in `.env`: the page never handles API keys).
 
 ### Changed
 
@@ -44,6 +48,10 @@
 - The terminal chat and the web app share one `Conversation` that turns the
   agent's steps into events.
 - The agent's answers name candidates by name instead of by id.
+- The browser app saves reports in `~/.resume-shortlister/reports` (unless
+  `REPORTS_DIR` is set) instead of the folder the server was started from, and
+  `resume-shortlister web` stops at start with the problem when a setting is
+  invalid.
 
 ### Fixed
 

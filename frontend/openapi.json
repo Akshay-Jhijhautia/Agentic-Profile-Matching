@@ -735,6 +735,88 @@
         "title": "SessionSummary",
         "type": "object"
       },
+      "SettingsView": {
+        "description": "The settings in effect, to read: they come from the environment and ``.env`` files.",
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "api_key_set": {
+            "title": "Api Key Set",
+            "type": "boolean"
+          },
+          "data_home": {
+            "title": "Data Home",
+            "type": "string"
+          },
+          "embeddings": {
+            "title": "Embeddings",
+            "type": "string"
+          },
+          "env_file": {
+            "title": "Env File",
+            "type": "string"
+          },
+          "interview_threshold": {
+            "title": "Interview Threshold",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "reports_dir": {
+            "title": "Reports Dir",
+            "type": "string"
+          },
+          "screening_rounds": {
+            "title": "Screening Rounds",
+            "type": "integer"
+          },
+          "shortlist_size": {
+            "title": "Shortlist Size",
+            "type": "integer"
+          },
+          "stored_answers": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoredAnswers"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "model",
+          "api_key",
+          "api_key_set",
+          "embeddings",
+          "shortlist_size",
+          "screening_rounds",
+          "interview_threshold",
+          "data_home",
+          "reports_dir",
+          "env_file",
+          "stored_answers"
+        ],
+        "title": "SettingsView",
+        "type": "object"
+      },
       "Snapshot": {
         "description": "A session as the UI shows it.",
         "properties": {
@@ -872,6 +954,29 @@
           "problem"
         ],
         "title": "Status",
+        "type": "object"
+      },
+      "StoredAnswers": {
+        "properties": {
+          "answers": {
+            "title": "Answers",
+            "type": "integer"
+          },
+          "reused": {
+            "title": "Reused",
+            "type": "integer"
+          },
+          "size_mb": {
+            "title": "Size Mb",
+            "type": "number"
+          }
+        },
+        "required": [
+          "answers",
+          "reused",
+          "size_mb"
+        ],
+        "title": "StoredAnswers",
         "type": "object"
       },
       "TurnRequest": {
@@ -1317,6 +1422,24 @@
           }
         },
         "summary": "Send"
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "operationId": "settings_view_api_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Settings View"
       }
     },
     "/api/status": {

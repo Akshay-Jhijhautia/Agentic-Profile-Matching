@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { CandidateDetail, InterviewPlan, InterviewQuestion } from "../api/client";
+import { Drawer } from "./Drawer";
 import { Decision } from "./Results";
 
 const VERDICT_TONE = { strong: "ok", partial: "warn", missing: "bad" } as const;
@@ -22,56 +23,34 @@ interface Props {
 /** One candidate, opened from the shortlist: why they rank where they do, round by round, and
  * questions for their interview. Everything shown comes from the screening's own record. */
 export function CandidateDrawer({ load, prepareQuestions, onDownload, onClose }: Props) {
-  const dialog = useRef<HTMLDialogElement>(null);
   const [detail, setDetail] = useState<CandidateDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const element = dialog.current;
-    // A modal dialog: focus stays inside and Escape closes it (jsdom lacks showModal).
-    if (element && !element.open) {
-      if (typeof element.showModal === "function") element.showModal();
-      else element.setAttribute("open", "");
-    }
     load().then(setDetail, (e) => setError(message(e)));
   }, [load]);
 
   return (
-    <dialog
-      ref={dialog}
-      className="drawer"
-      aria-label={detail?.name ?? "Candidate"}
-      onCancel={(event) => {
-        event.preventDefault();
-        onClose();
-      }}
-      onClick={(event) => event.target === dialog.current && onClose()} // the backdrop
-    >
-      <div className="drawer-body">
-        <header className="drawer-head">
-          <div>
-            <h2>{detail?.name ?? "Loading…"}</h2>
-            {detail && <Meta detail={detail} />}
-          </div>
-          <button type="button" className="secondary close" aria-label="Close" onClick={onClose}>
-            ✕
+    <Drawer
+      title={detail?.name ?? "Loading…"}
+      label={detail?.name ?? "Candidate"}
+      meta={detail && <Meta detail={detail} />}
+      footer={
+        detail && (
+          <button type="button" className="secondary" onClick={() => onDownload(detail)}>
+            Download this report
           </button>
-        </header>
-        {error && (
-          <div className="banner problem" role="alert">
-            {error}
-          </div>
-        )}
-        {detail && <Detail detail={detail} prepareQuestions={prepareQuestions} />}
-        {detail && (
-          <footer className="drawer-foot">
-            <button type="button" className="secondary" onClick={() => onDownload(detail)}>
-              Download this report
-            </button>
-          </footer>
-        )}
-      </div>
-    </dialog>
+        )
+      }
+      onClose={onClose}
+    >
+      {error && (
+        <div className="banner problem" role="alert">
+          {error}
+        </div>
+      )}
+      {detail && <Detail detail={detail} prepareQuestions={prepareQuestions} />}
+    </Drawer>
   );
 }
 

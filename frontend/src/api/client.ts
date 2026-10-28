@@ -7,6 +7,7 @@ export type Snapshot = Schemas["Snapshot"];
 export type Status = Schemas["Status"];
 export type CandidateRow = Schemas["CandidateRow"];
 export type SessionSummary = Schemas["SessionSummary"];
+export type SettingsView = Schemas["SettingsView"];
 export type CandidateDetail = Schemas["CandidateDetail"];
 export type InterviewPlan = Schemas["InterviewPlan"];
 export type InterviewQuestion = Schemas["InterviewQuestion"];
@@ -82,9 +83,11 @@ const json = (body: unknown): RequestInit => ({
 
 export const api = {
   status: () => request<Status>("/api/status"),
+  settings: () => request<SettingsView>("/api/settings"),
   sessions: () => request<SessionSummary[]>("/api/sessions"),
   createSession: () => request<Snapshot>("/api/sessions", { method: "POST" }),
   session: (id: string) => request<Snapshot>(`/api/sessions/${encodeURIComponent(id)}`),
+  deleteSession: (id: string) => request<void>(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }),
   candidate: (id: string, candidate: string) =>
     request<CandidateDetail>(`/api/sessions/${encodeURIComponent(id)}/candidates/${encodeURIComponent(candidate)}`),
   /** Interview questions for one candidate (a model call; asked again, the stored answer). */

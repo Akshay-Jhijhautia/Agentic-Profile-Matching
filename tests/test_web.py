@@ -14,7 +14,9 @@ from resume_shortlister import app as cli_app
 from resume_shortlister.pools import ResumePool
 from resume_shortlister.schemas import IntentDecision, InterviewQuestion, InterviewQuestions, Requirements
 from resume_shortlister.services import Services
-from resume_shortlister.web.app import TOKEN_HEADER, create_app
+from resume_shortlister.config import Settings
+from resume_shortlister.llm_cache import ResponseCache
+from resume_shortlister.web.app import TOKEN_HEADER, create_app, web_settings
 from tests.fakes import SCREENING_RESPONSES, FakeChatModel
 from tests.paths import RESUMES_DIR
 from tests.test_confirmation import IOS_JD, IOS_ROLE
@@ -87,6 +89,30 @@ def test_status_reports_model_and_readiness(client):
     status = client.get("/api/status").json()
     assert status["ready"] is True and status["problem"] is None
     assert status["model"] == "OpenAI gpt-5.6-terra" and status["embedder"] == "hashing"
+
+
+def test_settings_say_what_is_in_effect_and_where(client, make_services, tmp_path):
+    settings = client.get("/api/settings").json()
+    assert settings["model"] == "OpenAI gpt-5.6-terra"
+    assert (settings["api_key"], settings["api_key_set"]) == ("OPENAI_API_KEY", True)
+    assert settings["embeddings"].startswith("hashing:") and settings["interview_threshold"] == 75
+    assert settings["env_file"].endswith(".env") and settings["stored_answers"] is None  # not stored in tests
+
+    def with_store():
+        services = make_services()
+        services.llm_cache = ResponseCache(tmp_path / "answers.sqlite")
+        return services
+
+    stored = _client(with_store).get("/api/settings").json()["stored_answers"]
+    assert stored == {"answers": 0, "reused": 0, "size_mb": stored["size_mb"]}
+
+
+def test_the_web_app_saves_reports_in_the_data_home(monkeypatch, tmp_path):
+    settings = Settings(home=str(tmp_path))
+    monkeypatch.delenv("REPORTS_DIR", raising=False)
+    assert web_settings(settings).reports_dir == str(tmp_path / "reports")
+    monkeypatch.setenv("REPORTS_DIR", "/srv/reports")  # chosen explicitly: kept
+    assert web_settings(settings) is settings
 
 
 # --- a screening ----------------------------------------------------------------------------------------

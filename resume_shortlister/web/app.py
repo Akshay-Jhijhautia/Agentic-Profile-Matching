@@ -13,7 +13,9 @@ open in the browser cannot drive the API.
 
 from __future__ import annotations
 
+import dataclasses
 import json
+import os
 import secrets
 import shlex
 import shutil
@@ -27,16 +29,19 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from .. import __version__, analysis, providers
-from ..config import tool_env
+from .. import __version__, analysis, guardrails, pools, providers
+from ..config import Settings, get_settings, tool_env
+from ..rag.resume_rag import display_path
 from ..services import Services
 from .models import (
     CandidateDetail,
     FolderRequest,
     InterviewPlan,
     SessionSummary,
+    SettingsView,
     Snapshot,
     Status,
+    StoredAnswers,
     TurnRequest,
     event_payload,
 )
@@ -142,6 +147,23 @@ def create_app(
         settings = services.settings
         return Status(version=__version__, model=settings.model_label, embedder=settings.embedder,
                       ready=problem is None, problem=problem)
+
+    @app.get("/api/settings")
+    def settings_view() -> SettingsView:
+        services = make_services()
+        settings = services.settings
+        key_vars = providers.required_key_vars(settings)
+        stats = services.llm_cache.stats() if services.llm_cache else None
+        return SettingsView(
+            version=__version__, model=settings.model_label, api_key=key_vars[0] if key_vars else None,
+            api_key_set=providers.missing_key(key_vars) is None,
+            embeddings=pools.make_embedder(settings).name, shortlist_size=settings.shortlist_size,
+            screening_rounds=settings.screening_rounds, interview_threshold=guardrails.INTERVIEW_THRESHOLD,
+            data_home=display_path(settings.home), reports_dir=display_path(settings.reports_dir),
+            env_file=display_path(str(Path(settings.home) / ".env")),
+            stored_answers=StoredAnswers(answers=stats.answers, reused=stats.reused, size_mb=round(stats.size_mb, 1))
+            if stats else None,
+        )
 
     @app.get("/api/sessions")
     def list_sessions() -> list[SessionSummary]:
@@ -253,6 +275,14 @@ def create_app(
     return app
 
 
+def web_settings(settings: Settings) -> Settings:
+    """The web app's settings: reports are saved in the data home unless ``REPORTS_DIR`` says
+    where, since the folder the server was started from means nothing in a browser."""
+    if os.getenv("REPORTS_DIR"):
+        return settings
+    return dataclasses.replace(settings, reports_dir=str(Path(settings.home) / "reports"))
+
+
 def serve(port: int = DEFAULT_PORT, open_browser: bool = True, host: str = DEFAULT_HOST) -> None:
     """Run the app on ``host``:``port`` until interrupted, opening it in the browser.
 
@@ -263,7 +293,8 @@ def serve(port: int = DEFAULT_PORT, open_browser: bool = True, host: str = DEFAU
     """
     import uvicorn
 
-    app = create_app(token=tool_env("TOKEN"))
+    settings = web_settings(get_settings())
+    app = create_app(lambda: Services.from_settings(settings), token=tool_env("TOKEN"))
     url = f"http://127.0.0.1:{port}/"
     if host == DEFAULT_HOST:
         print(f"Resume Shortlister is running at {url} (Ctrl-C to stop).")

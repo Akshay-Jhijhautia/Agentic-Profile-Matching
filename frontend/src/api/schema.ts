@@ -146,6 +146,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Settings View */
+        get: operations["settings_view_api_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/status": {
         parameters: {
             query?: never;
@@ -445,6 +462,35 @@ export interface components {
             updated: string;
         };
         /**
+         * SettingsView
+         * @description The settings in effect, to read: they come from the environment and ``.env`` files.
+         */
+        SettingsView: {
+            /** Api Key */
+            api_key: string | null;
+            /** Api Key Set */
+            api_key_set: boolean;
+            /** Data Home */
+            data_home: string;
+            /** Embeddings */
+            embeddings: string;
+            /** Env File */
+            env_file: string;
+            /** Interview Threshold */
+            interview_threshold: number;
+            /** Model */
+            model: string;
+            /** Reports Dir */
+            reports_dir: string;
+            /** Screening Rounds */
+            screening_rounds: number;
+            /** Shortlist Size */
+            shortlist_size: number;
+            stored_answers: components["schemas"]["StoredAnswers"] | null;
+            /** Version */
+            version: string;
+        };
+        /**
          * Snapshot
          * @description A session as the UI shows it.
          */
@@ -483,6 +529,15 @@ export interface components {
             ready: boolean;
             /** Version */
             version: string;
+        };
+        /** StoredAnswers */
+        StoredAnswers: {
+            /** Answers */
+            answers: number;
+            /** Reused */
+            reused: number;
+            /** Size Mb */
+            size_mb: number;
         };
         /** TurnRequest */
         TurnRequest: {
@@ -807,6 +862,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    settings_view_api_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsView"];
                 };
             };
         };

@@ -7,6 +7,8 @@ import { Header } from "./components/Header";
 import { ResumesPanel } from "./components/ResumesPanel";
 import { Results } from "./components/Results";
 import { RolePanel } from "./components/RolePanel";
+import { SessionsDrawer } from "./components/SessionsDrawer";
+import { SettingsDrawer } from "./components/SettingsDrawer";
 import { useSession } from "./useSession";
 
 function HowItWorks() {
@@ -32,6 +34,7 @@ export function App() {
   const session = useSession();
   const { status, snapshot, activity, busy, pending, error } = session;
   const [selected, setSelected] = useState<string | null>(null);
+  const [panel, setPanel] = useState<"sessions" | "settings" | null>(null);
   const sessionId = snapshot?.session_id ?? "";
   const openQuestions = snapshot?.open_questions ?? [];
   const messages = snapshot?.messages ?? [];
@@ -48,7 +51,13 @@ export function App() {
 
   return (
     <>
-      <Header status={status} />
+      <Header
+        status={status}
+        busy={busy}
+        onNew={() => void session.open(null)}
+        onSessions={() => setPanel("sessions")}
+        onSettings={() => setPanel("settings")}
+      />
       {status && !status.ready && <div className="banner problem">{status.problem}</div>}
       {snapshot?.notice && <div className="banner">{snapshot.notice}</div>}
       {error && (
@@ -89,6 +98,23 @@ export function App() {
           onClose={() => setSelected(null)}
         />
       )}
+      {panel === "sessions" && (
+        <SessionsDrawer
+          current={sessionId}
+          load={api.sessions}
+          onOpen={(id) => {
+            setPanel(null);
+            void session.open(id);
+          }}
+          onNew={() => {
+            setPanel(null);
+            void session.open(null);
+          }}
+          onDelete={session.remove}
+          onClose={() => setPanel(null)}
+        />
+      )}
+      {panel === "settings" && <SettingsDrawer load={api.settings} onClose={() => setPanel(null)} />}
       <footer>
         Resume Shortlister {status?.version} · runs on this computer · recommendations are a starting point; people make the
         hiring decisions

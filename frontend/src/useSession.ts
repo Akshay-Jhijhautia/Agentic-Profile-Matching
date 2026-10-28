@@ -18,22 +18,27 @@ export function useSession() {
   // React runs effects twice in development (StrictMode); open one session, not two.
   const opening = useRef(false);
 
+  /** Opens the saved session ``wanted`` (a new one when it is null, or gone). */
+  const open = useCallback(async (wanted: string | null) => {
+    setError(null);
+    setActivity([]);
+    try {
+      const opened = await (wanted
+        ? api.session(wanted).catch((e) => (e instanceof ApiError && e.status === 404 ? api.createSession() : Promise.reject(e)))
+        : api.createSession());
+      setSnapshot(opened);
+      window.history.replaceState(null, "", `?session=${encodeURIComponent(opened.session_id)}`);
+    } catch (e) {
+      setError(message(e));
+    }
+  }, []);
+
   useEffect(() => {
     if (opening.current) return;
     opening.current = true;
     api.status().then(setStatus, (e) => setError(message(e)));
-    const wanted = new URLSearchParams(window.location.search).get("session");
-    const open = wanted
-      ? api.session(wanted).catch((e) => (e instanceof ApiError && e.status === 404 ? api.createSession() : Promise.reject(e)))
-      : api.createSession();
-    open.then(
-      (opened) => {
-        setSnapshot(opened);
-        window.history.replaceState(null, "", `?session=${encodeURIComponent(opened.session_id)}`);
-      },
-      (e) => setError(message(e)),
-    );
-  }, []);
+    void open(new URLSearchParams(window.location.search).get("session"));
+  }, [open]);
 
   const run = useCallback(
     async (said: string, start: Start) => {
@@ -66,6 +71,12 @@ export function useSession() {
     loadFolder: (path: string) => run(`Load the resumes in ${path}`, (onEvent) => api.loadFolder(id, path, onEvent)),
     upload: (files: File[]) => run(uploadMessage(files), (onEvent) => api.upload(id, files, onEvent)),
     downloadReport: () => api.downloadReport(id).catch((e) => setError(message(e))),
+    open,
+    /** Deletes a saved session; deleting the open one starts a new one. */
+    remove: async (target: string) => {
+      await api.deleteSession(target);
+      if (target === id) await open(null);
+    },
   };
 }
 

@@ -32,7 +32,12 @@ Reports are especially useful about:
   home (`~/.resume-shortlister`) and the reports directory.
 - **File access outside its limits**: the agent's `write_file` tool reaching
   outside the reports directory, or file tools reading through crafted paths.
-- **Keys** (API keys) appearing in logs, reports, stored answers or errors.
+- **The browser app answering anyone but its own page**: another website
+  open in the browser, another host name pointing at this machine (DNS
+  rebinding), or a request without the token created at each start reaching
+  the API (`resume-shortlister web` listens on 127.0.0.1 only).
+- **Keys** (API keys) appearing in logs, reports, stored answers, errors or
+  the browser app's pages.
 - **Vulnerable dependencies** that are reachable from the tool.
 
 Out of scope: ranking quality and model disagreement on borderline candidates

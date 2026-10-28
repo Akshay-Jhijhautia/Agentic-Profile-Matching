@@ -49,16 +49,17 @@ interface Props {
 /** The chat with the agent: questions, comparisons and changes to the role, and what it did for each. */
 export function Conversation({ messages, activity, busy, pending, suggestions, lastReply, onSend }: Props) {
   const [text, setText] = useState("");
-  const end = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
 
   const shown = busy && pending ? [...messages, { role: "user" as const, text: pending }] : messages;
   // The current turn's steps follow the message that started it.
   const lastUser = shown.map((m) => m.role).lastIndexOf("user");
   const lastAgent = shown.map((m) => m.role).lastIndexOf("assistant");
 
+  // The latest message in view, within the list only: the page stays where the reader is.
   useEffect(() => {
-    end.current?.scrollIntoView?.({ block: "nearest" });
-  }, [shown.length, busy]);
+    if (list.current) list.current.scrollTop = list.current.scrollHeight;
+  }, [shown.length, busy, activity.length]);
 
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
@@ -76,7 +77,7 @@ export function Conversation({ messages, activity, busy, pending, suggestions, l
   return (
     <section className="card conversation" aria-label="Conversation">
       <h2>Conversation</h2>
-      <div className="messages">
+      <div className="messages" ref={list}>
         {shown.map((message, index) => (
           <div key={index}>
             {index === lastAgent && lastReply && index > lastUser ? (
@@ -94,7 +95,6 @@ export function Conversation({ messages, activity, busy, pending, suggestions, l
           </div>
         ))}
         {lastUser < 0 && <Activity events={activity} busy={busy} />}
-        <div ref={end} />
       </div>
       {suggestions.length > 0 && !busy && (
         <div className="examples">

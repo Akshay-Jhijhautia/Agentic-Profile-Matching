@@ -13,7 +13,8 @@ explains; the recruiter decides.**
 Point it at a folder of resumes and describe the role, in one sentence or a
 full job description. Resume Shortlister screens every resume in three rounds,
 recommends whom to interview, and shows the evidence behind every score. Then
-refine the search by talking to it:
+refine the search by talking to it, in your browser (`resume-shortlister web`,
+[below](#in-your-browser)) or in the terminal:
 
 ```
 you> Find me candidates with React and 3+ years experience
@@ -40,7 +41,7 @@ you> Write 3 interview questions for the top candidate
   server. Embeddings, index and data stay on your machine; with Ollama, nothing
   leaves it.
 - **Measured, not claimed.** Ranking quality, run-to-run stability and model
-  agreement are measured with scripts in this repository, alongside 559 tests.
+  agreement are measured with scripts in this repository, alongside 561 tests.
 
 **Status:** developer preview (v1.1; the browser interface,
 `resume-shortlister web`, is new on the main branch and comes with 1.2).
@@ -73,7 +74,10 @@ Or run it in Docker (see [Docker](#docker)).
 ## Quick start
 
 ```bash
-# Chat: describe the role, then load resumes (or the other way round)
+# In your browser, on this computer only
+resume-shortlister web
+
+# Chat in the terminal: describe the role, then load resumes (or the other way round)
 resume-shortlister chat
 you> /resumes ~/Downloads/backend-applicants          # a folder: 5 or 500 resumes
 you> /add ~/Downloads/jane.pdf ~/Downloads/raj.docx   # or individual files (drag them in)
@@ -89,9 +93,44 @@ resume-shortlister chat --session 20261022-1640-a3f2
 
 Resumes can be PDF, DOCX, TXT or MD. Every
 screening saves `reports/<role>-<timestamp>/summary.md` (in the current
-folder) plus one detailed report per shortlisted candidate. Chat commands:
+folder; the browser app saves them in `~/.resume-shortlister/reports`) plus one
+detailed report per shortlisted candidate. Chat commands:
 `/resumes <folder>`, `/add <files>`, `/report`, `/reset`, `/help`, `/exit`.
 From a source checkout, `python main.py ...` runs the same commands.
+
+## In your browser
+
+```bash
+resume-shortlister web     # opens http://127.0.0.1:8765/
+```
+
+![The shortlist and the conversation in the browser](docs/images/web-shortlist.png)
+
+Drop resume files on the page (or give a folder on this computer), describe
+the role or paste the job description, and follow the screening as it runs.
+When the description leaves a requirement open, it asks before screening.
+Then:
+
+- **The shortlist**: every round's score, the must-have checks and the
+  recommendation, with the report to download.
+- **A candidate**: select one for the recommendation and the rule behind it,
+  how the score adds up, a verdict per requirement with the quote from the
+  resume, strengths, gaps and risks, and interview questions aimed at their
+  gaps and unverified claims.
+- **The conversation**: ask why one candidate ranks above another, compare
+  them, or change the role ("make Docker a must-have"); suggested follow-ups
+  use your shortlist.
+- **Sessions** reopen any earlier screening, and **Settings** show the model,
+  whether its key is set, the screening rules and where your data is.
+
+![A candidate's evidence, score breakdown and recommendation](docs/images/web-candidate.png)
+
+The app runs on this computer only: it listens on 127.0.0.1, answers only
+requests addressed to it there, and its API needs a token that only its own
+page receives, created at each start. It needs no Node: the interface is built
+into the package. Settings are changed in `~/.resume-shortlister/.env` (see
+[Configuration](#configuration)), not in the page, so API keys never pass
+through the browser. Developing the interface: [frontend/README.md](frontend/README.md).
 
 ## Commands
 
@@ -119,6 +158,7 @@ Everything the tool keeps lives in one folder, `~/.resume-shortlister`
 | `uploads/` | Copies of resumes given as files, one batch per chat or file set |
 | `sessions.sqlite` | Saved chat sessions (LangGraph checkpoints) |
 | `llm_cache.sqlite` | Stored model answers, so a repeated screening gives the same result |
+| `reports/` | Reports saved by the browser app |
 | `.env` | Optional settings, e.g. `OPENAI_API_KEY` |
 
 Every chat is saved as it goes. `resume-shortlister chat --session <id>` restores
@@ -143,8 +183,8 @@ docker run --rm -e OPENAI_API_KEY -p 127.0.0.1:8765:8765 \
 
 The image runs as a non-root user and includes the embedding model, so indexing
 works without network access. `/data` keeps indexes, uploads and
-sessions between runs; `/work` is your folder of resumes and job descriptions,
-where reports are written. For another chat provider, build with its extra
+sessions between runs (and the browser app's reports); `/work` is your folder
+of resumes and job descriptions, where the terminal's reports are written. For another chat provider, build with its extra
 (`--build-arg EXTRAS=anthropic`) and pass its settings with `-e`.
 
 ## Your resumes
@@ -583,7 +623,7 @@ other embeddings is re-indexed automatically the next time it is used.
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | With `EMBEDDER=openai` |
 | `RESUME_SHORTLISTER_HOME` | `~/.resume-shortlister` | Local data: indexes, uploads, sessions, `.env` |
 | `INDEX_DIR` / `UPLOADS_DIR` / `SESSIONS_DB` | under `RESUME_SHORTLISTER_HOME` | Override one location (`CHROMA_DB_DIR` still works for `INDEX_DIR`) |
-| `REPORTS_DIR` | `reports` | Where reports are saved; the only directory the agent may write to |
+| `REPORTS_DIR` | `reports` (the browser app: `~/.resume-shortlister/reports`) | Where reports are saved; the only directory the agent may write to |
 | `SHORTLIST_SIZE` | `10` | Candidates kept after round 1 |
 | `SCREENING_ROUNDS` | `3` | 1: retrieval only; 2: + deep analysis; 3: + interview recommendations |
 | `SAVE_REPORTS` | `true` | Save reports after every screening |
