@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased (1.2)
+
+### Added
+
+- **Local web API** (`profile-match web`): sessions, streamed turns (Server-Sent
+  Events), folder loading, resume uploads, candidate reports and the report
+  download, served on 127.0.0.1 only, with a per-launch token and a Host check.
+  The browser interface builds on it.
+
+### Changed
+
+- The terminal chat and the web app share one `Conversation` that turns the
+  agent's steps into events.
+
+### Fixed
+
+- Progress notes named the deep-reviewed candidate with part of an internal
+  key ("Deep analysis of 3f2a…:alex_lee") instead of their id.
+
 ## 1.1.0 (2026-10-25)
 
 Provider-agnostic, local-first and reproducible.

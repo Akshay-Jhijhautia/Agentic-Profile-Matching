@@ -7,6 +7,7 @@
     profile-match sessions [--delete ID]                          saved chat sessions
     profile-match clean    [--older-than DAYS] [--yes]            remove old uploads, indexes, sessions, answers
     profile-match cache    [--clear]                              stored model answers (reproducible runs)
+    profile-match web      [--port PORT] [--no-browser]           the app in your browser (this machine only)
     profile-match --version
 
 PATH is a folder of resumes or one or more resume files (files are copied
@@ -19,12 +20,11 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Callable
-from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
-from pathlib import Path
 
 from . import __version__, cli, maintenance, pools, providers, sessions
 from .agent.graph import build_graph, screen
+from .conversation import reload_resumes
 from .config import get_settings
 from .llm_cache import ResponseCache
 from .rag import resume_rag
@@ -90,14 +90,9 @@ def _chat(services: Services, paths: list[str] | None, session_id: str | None) -
     if session_id:
         if not sessions.exists(saver, session_id):
             raise ValueError(f"No saved session '{session_id}'. See: profile-match sessions")
-        saved = graph.get_state(sessions.config_for(session_id)).values
-        folder = saved.get("pool_folder")
-        if folder and Path(folder).is_dir():
-            # Shown as the session knew it ("your uploaded resumes" rather than a batch path).
-            report = replace(services.use_folder(folder), folder=saved.get("resume_folder") or folder)
-            print(report.summary(), file=sys.stderr)
-        elif folder:
-            print(f"The resumes of this session ({folder}) are gone; load new ones in the chat.", file=sys.stderr)
+        report, problem = reload_resumes(services, graph.get_state(sessions.config_for(session_id)).values)
+        if report or problem:
+            print(report.summary() if report else problem, file=sys.stderr)
     elif paths:
         # In chat, files start the session's uploads batch, which later /add commands join.
         batch = pools.new_batch(services.settings.uploads_dir)
@@ -205,6 +200,17 @@ def cache(argv: list[str]) -> int:
     return 0
 
 
+def web(argv: list[str]) -> int:
+    from .web.app import DEFAULT_PORT, serve
+
+    parser = _parser("web", "Open Profile Match in your browser. It runs on this machine only.")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Port on 127.0.0.1 (default: {DEFAULT_PORT}).")
+    parser.add_argument("--no-browser", action="store_true", help="Do not open the browser.")
+    args = parser.parse_args(argv)
+    serve(args.port, open_browser=not args.no_browser)
+    return 0
+
+
 # --- entry point ----------------------------------------------------------------------------------------
 
 # Command name -> handler taking the remaining arguments.
@@ -216,6 +222,7 @@ COMMANDS: dict[str, Callable[[list[str]], int]] = {
     "sessions": list_sessions,
     "clean": clean,
     "cache": cache,
+    "web": web,
 }
 
 

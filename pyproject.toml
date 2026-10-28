@@ -41,6 +41,10 @@ dependencies = [
     "langchain-core>=1.6,<2",
     "langchain-openai>=1.7,<2",
     "rich>=13.0",
+    # Web app: local API server
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.30",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]

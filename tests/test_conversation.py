@@ -11,7 +11,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from rich.console import Console
 
 import matching_agent
-from profile_matching import cli, pools
+from profile_matching import cli, conversation, pools
 from profile_matching.agent.routing import IntentRouter
 from profile_matching.schemas import (
     CandidateNote,
@@ -171,9 +171,9 @@ def test_close_dangling_tool_calls():
         AIMessage("", tool_calls=[{"name": "a", "args": {}, "id": "1"}, {"name": "b", "args": {}, "id": "2"}]),
         ToolMessage("{}", tool_call_id="1", name="a"),
     ]
-    (closing,) = cli.close_dangling_tool_calls(messages, "boom")
+    (closing,) = conversation.close_dangling_tool_calls(messages, "boom")
     assert closing.tool_call_id == "2" and json.loads(closing.text)["error"] == "boom"
-    assert cli.close_dangling_tool_calls(messages[:1], "boom") == []
+    assert conversation.close_dangling_tool_calls(messages[:1], "boom") == []
 
 
 # --- routing -----------------------------------------------------------------------------------------

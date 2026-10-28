@@ -100,6 +100,7 @@ From a source checkout, `python main.py ...` runs the same commands.
 | `profile-match sessions [--delete ID]` | Saved chat sessions, newest first: id, date, role, resumes |
 | `profile-match clean [--older-than DAYS] [--yes]` | Old upload batches and sessions (default 30 days), stored model answers unused that long, indexes of deleted folders, and a ChromaDB index left by versions before 1.1; lists them, deletes with `--yes` |
 | `profile-match cache [--clear]` | Stored model answers (see [Reproducible results](#reproducible-results)); `--clear` deletes them |
+| `profile-match web [--port PORT] [--no-browser]` | The local web app on 127.0.0.1 (in progress: the API is ready, the browser interface follows) |
 | `profile-match --version` | The installed version |
 
 ### Local data
@@ -603,7 +604,9 @@ need a chat model (a local Ollama model works without one).
 | `profile_matching/reports.py` | Shortlist report, chat summary, assistant context |
 | `profile_matching/analysis.py` | Comparison, interview questions and report lookup behind the tools |
 | `profile_matching/tools/` | Agent tools, built per `Services` by factories |
-| `profile_matching/cli.py` | Rich terminal chat driving the human feedback loop |
+| `profile_matching/conversation.py` | A conversation with the agent as a stream of events, shared by the terminal and the web app |
+| `profile_matching/cli.py` | Rich terminal chat: prints a conversation's events |
+| `profile_matching/web/` | The local web app: FastAPI API (`app.py`), open sessions (`workspace.py`), response shapes (`models.py`) |
 | `profile_matching/llm.py` | The single path to the chat model: `structured(...)`, `with_tools(...)` |
 | `profile_matching/llm_cache.py` | Stored model answers: the same question always gets the same answer, with an audit trail |
 | `profile_matching/providers.py` | Chat model providers: how each is built, its key, its quirks, its error messages |
