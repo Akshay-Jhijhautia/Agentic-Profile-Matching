@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { Snapshot } from "../api/client";
 import { Results } from "./Results";
 
@@ -19,7 +19,7 @@ const snapshot: Snapshot = {
 };
 
 test("the ranked table shows scores, must-haves and recommendations", () => {
-  render(<Results snapshot={snapshot} onDownload={() => {}} />);
+  render(<Results snapshot={snapshot} onDownload={() => {}} onSelect={() => {}} />);
   expect(screen.getByText("React Developer")).toBeTruthy();
   expect(screen.getByText("100 resumes screened")).toBeTruthy();
   expect(screen.getByText("1 recommended for interview")).toBeTruthy();
@@ -30,6 +30,14 @@ test("the ranked table shows scores, must-haves and recommendations", () => {
 });
 
 test("nothing is shown before a screening", () => {
-  const { container } = render(<Results snapshot={{ ...snapshot, requirements: null, screened: 0 }} onDownload={() => {}} />);
+  const { container } = render(<Results snapshot={{ ...snapshot, requirements: null, screened: 0 }} onDownload={() => {}} onSelect={() => {}} />);
   expect(container.innerHTML).toBe("");
+});
+
+test("a candidate opens from their name or their row", () => {
+  const onSelect = vi.fn();
+  const { container } = render(<Results snapshot={snapshot} onDownload={() => {}} onSelect={onSelect} />);
+  fireEvent.click(screen.getByRole("button", { name: "Rafael Bauer" }));
+  fireEvent.click(container.querySelectorAll("tr.candidate")[0].querySelector("td.score")!);
+  expect(onSelect.mock.calls).toEqual([["rafael"], ["anika"]]);
 });

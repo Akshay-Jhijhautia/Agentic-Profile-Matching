@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from resume_shortlister import app as cli_app
 from resume_shortlister.pools import ResumePool
-from resume_shortlister.schemas import IntentDecision, Requirements
+from resume_shortlister.schemas import IntentDecision, InterviewQuestion, InterviewQuestions, Requirements
 from resume_shortlister.services import Services
 from resume_shortlister.web.app import TOKEN_HEADER, create_app
 from tests.fakes import SCREENING_RESPONSES, FakeChatModel
@@ -24,19 +24,27 @@ TOKEN = "test-token"
 PYTHON_REQUEST = "Find me a Python backend engineer; Django is a plus"
 
 
-@pytest.fixture
-def make_services(services, tmp_path):
+def _services_factory(services, tmp_path, rounds: int):
     """Services per session, as the app makes them: the fixture resumes loaded, a fake model."""
     settings = dataclasses.replace(services.settings, sessions_db=str(tmp_path / "sessions.sqlite"),
-                                   screening_rounds=1)
+                                   screening_rounds=rounds)
     model = FakeChatModel({Requirements: ROLE, IntentDecision: route_by_keyword, **SCREENING_RESPONSES})
     return lambda: Services(pool=ResumePool.open(RESUMES_DIR, settings), settings=settings, model=model)
 
 
+def _client(make_services) -> TestClient:
+    return TestClient(create_app(make_services, token=TOKEN), base_url="http://127.0.0.1",
+                      headers={TOKEN_HEADER: TOKEN})
+
+
+@pytest.fixture
+def make_services(services, tmp_path):
+    return _services_factory(services, tmp_path, rounds=1)
+
+
 @pytest.fixture
 def client(make_services):
-    app = create_app(make_services, token=TOKEN)
-    return TestClient(app, base_url="http://127.0.0.1", headers={TOKEN_HEADER: TOKEN})
+    return _client(make_services)
 
 
 def events(response: httpx.Response) -> list[tuple[str, dict]]:
@@ -113,13 +121,57 @@ def test_open_requirements_are_confirmed_before_screening(client):
     assert snapshot["open_questions"] == [] and snapshot["screened"] == 12
 
 
-def test_candidate_reports_and_the_report_download(client):
+def test_a_candidate_detail_explains_their_place_in_every_round(services, tmp_path):
+    client = _client(_services_factory(services, tmp_path, rounds=3))
+    session_id = _new(client)
+    assert client.get(f"/api/sessions/{session_id}/candidates/john_doe").status_code == 404  # no search yet
+    _, snapshot = _turn(client, session_id, PYTHON_REQUEST)
+    row = snapshot["shortlist"][0]
+
+    detail = client.get(f"/api/sessions/{session_id}/candidates/{row['id']}").json()
+    assert (detail["rank"], detail["score"], detail["deep"]) == (row["rank"], row["score"], row["deep"])
+    assert detail["recommendation"]["decision"] == row["decision"] and detail["recommendation"]["rule"]
+    assert "/" not in detail["resume"]  # the file name, not a path on this computer
+    components = detail["score_components"]
+    assert components[-1]["component"] == "Deep analysis" and detail["rubric"]
+    assert round(sum(c["points"] for c in components)) == detail["score"]
+    assert detail["evidence"] and detail["evidence"][0]["verdict"] in ("strong", "partial", "missing")
+    assert detail["strengths"] and detail["summary"] and detail["must_have_checks"]
+    assert detail["report"].startswith(f"# {detail['name']}")
+
+    # Knocked-out candidates were screened too: their round-1 record, without rounds 2 and 3.
+    knocked_out = next(c for c in client.app.state.workspace.get(session_id).conversation.values["candidates"]
+                       if not c.passes_must_haves)
+    detail = client.get(f"/api/sessions/{session_id}/candidates/{knocked_out.id}").json()
+    assert detail["knocked_out"] and detail["deep"] is None and detail["evidence"] == []
+    assert client.get(f"/api/sessions/{session_id}/candidates/nobody_here").status_code == 404
+
+
+def test_interview_questions_for_a_candidate(client):
+    session_id = _new(client)
+    session = client.app.state.workspace.get(session_id)
+    session.services.model.responses[InterviewQuestions] = InterviewQuestions(questions=[
+        InterviewQuestion(question="Walk me through a Django migration you owned.", focus="Django",
+                          purpose="assess_depth", strong_answer="Schema and data steps, rollback."),
+    ])
+    _turn(client, session_id, PYTHON_REQUEST)
+    plan = client.post(f"/api/sessions/{session_id}/candidates/john_doe/questions").json()
+    assert plan["candidate_id"] == "john_doe" and set(plan["focus_areas"]) == {"gaps", "unverified", "strengths"}
+    assert plan["questions"][0]["focus"] == "Django"
+    assert client.post(f"/api/sessions/{session_id}/candidates/nobody_here/questions").status_code == 404
+
+    def unavailable(_messages):
+        raise openai.APIConnectionError(request=httpx.Request("POST", "https://api.openai.com"))
+
+    session.services.model.responses[InterviewQuestions] = unavailable
+    failed = client.post(f"/api/sessions/{session_id}/candidates/maria_garcia/questions")
+    assert failed.status_code == 502 and "OpenAI" in failed.json()["detail"]
+
+
+def test_the_report_download(client):
     session_id = _new(client)
     assert client.get(f"/api/sessions/{session_id}/report").status_code == 404  # no search yet
     _turn(client, session_id, PYTHON_REQUEST)
-    report = client.get(f"/api/sessions/{session_id}/candidates/john_doe")
-    assert report.status_code == 200 and "John Doe" in report.json()["report"]
-    assert client.get(f"/api/sessions/{session_id}/candidates/nobody_here").status_code == 404
     download = client.get(f"/api/sessions/{session_id}/report")
     assert download.headers["content-type"].startswith("text/markdown")
     assert download.headers["content-disposition"] == f'attachment; filename="{session_id}.md"'

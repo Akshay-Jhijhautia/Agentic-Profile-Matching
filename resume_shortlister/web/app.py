@@ -27,12 +27,13 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from .. import __version__, analysis
+from .. import __version__, analysis, providers
 from ..config import tool_env
 from ..services import Services
 from .models import (
-    CandidateReport,
+    CandidateDetail,
     FolderRequest,
+    InterviewPlan,
     SessionSummary,
     Snapshot,
     Status,
@@ -213,15 +214,33 @@ def create_app(
     # --- results ---
 
     @app.get("/api/sessions/{session_id}/candidates/{candidate_id}")
-    def candidate(session_id: str, candidate_id: str) -> CandidateReport:
+    def candidate(session_id: str, candidate_id: str) -> CandidateDetail:
+        session = opened(session_id)
+        values = session.conversation.values
+        requirements = analysis.as_requirements(values.get("requirements"))
+        try:
+            match = analysis.screened_match(session.services, candidate_id, requirements,
+                                            values.get("shortlist", []), values.get("candidates", []))
+        except (LookupError, ValueError) as exc:
+            raise HTTPException(404, str(exc)) from None
+        return CandidateDetail.of(match, requirements)
+
+    @app.post("/api/sessions/{session_id}/candidates/{candidate_id}/questions")
+    def interview_questions(session_id: str, candidate_id: str) -> InterviewPlan:
+        """Questions aimed at the candidate's gaps, unverified claims and strengths: the chat's
+        own tool, so asking again gives the stored answer."""
         session = opened(session_id)
         values = session.conversation.values
         try:
-            report = analysis.detailed_report(session.services, candidate_id, values.get("requirements"),
-                                              values.get("shortlist", []), values.get("candidates", []))
-        except (LookupError, ValueError) as exc:
+            result = analysis.generate_interview_questions(
+                session.services, candidate_id, analysis.as_requirements(values.get("requirements")),
+                shortlist=values.get("shortlist", []),
+            )
+        except LookupError as exc:
             raise HTTPException(404, str(exc)) from None
-        return CandidateReport(id=candidate_id, report=report)
+        except providers.api_errors() as exc:
+            raise HTTPException(502, providers.error_message(exc)) from None
+        return InterviewPlan.of(result)
 
     @app.get("/api/sessions/{session_id}/report", response_class=PlainTextResponse)
     def report(session_id: str) -> PlainTextResponse:

@@ -3,7 +3,9 @@
 import sys
 
 from resume_shortlister import app
+from resume_shortlister.agent.state import LEGACY_SCHEMAS, STATE_MODELS, serializer
 from resume_shortlister.config import Settings, default_home, tool_env
+from resume_shortlister.schemas import Requirements, SkillRequirement
 
 
 def test_an_existing_profile_match_folder_is_used_until_a_new_one_exists(tmp_path):
@@ -36,3 +38,18 @@ def test_the_old_command_still_works_and_says_so(monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["/usr/local/bin/resume-shortlister", "--version"])
     assert app.main() == 0
     assert capsys.readouterr().err == ""
+
+
+def test_sessions_saved_before_the_rename_restore_their_types():
+    # The types as Profile Match stored them: same names and fields, in profile_matching.schemas.
+    legacy = {model: type(model.__name__, (model,), {"__module__": LEGACY_SCHEMAS}) for model in STATE_MODELS}
+    saved = legacy[Requirements](
+        role_title="React Developer", must_have=[legacy[SkillRequirement](skill="React", min_years=3)],
+        nice_to_have=["Docker"], min_total_years=None, min_degree=None,
+    )
+    stored = serializer().dumps_typed({"requirements": saved})
+    assert LEGACY_SCHEMAS.encode() in stored[1]
+
+    restored = serializer().loads_typed(stored)["requirements"]
+    assert type(restored) is Requirements and type(restored.must_have[0]) is SkillRequirement
+    assert restored.must_have[0].label == "React (3+ yrs)"

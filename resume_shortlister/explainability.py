@@ -8,6 +8,7 @@ so a report can never disagree with the ranking.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -73,17 +74,31 @@ def strengths_and_gaps(match: CandidateMatch, requirements: Requirements) -> tup
 # --- score breakdown ---------------------------------------------------------------------------------
 
 
-def score_rows(match: CandidateMatch) -> list[list[object]]:
-    """How the final score adds up: component, value, weight, points."""
+@dataclass(frozen=True)
+class ScoreLine:
+    component: str  # "Semantic fit"
+    value: str  # the component's own score: "72%", or the deep score "85"
+    weight: float  # its share of the final score
+    points: float  # what it adds to the final score
+
+
+def score_lines(match: CandidateMatch) -> list[ScoreLine]:
+    """How the final score adds up, one line per component (the points sum to it before rounding)."""
     retrieval_share = 1 - DEEP_WEIGHT if match.assessment else 1
     weights = {name: retrieval_share * w for name, w in match.retrieval_weights().items()}
-    rows = []
+    lines = []
     for name, points in match.contributions().items():
         if name == "deep":
-            value, weight = match.assessment.deep_score, DEEP_WEIGHT
+            value, weight = str(match.assessment.deep_score), DEEP_WEIGHT
         else:
             value, weight = f"{getattr(match.score_breakdown, name):.0%}", weights[name]
-        rows.append([COMPONENT_LABELS[name].capitalize(), value, f"{weight:.2f}", f"{points:.1f}"])
+        lines.append(ScoreLine(COMPONENT_LABELS[name].capitalize(), value, weight, points))
+    return lines
+
+
+def score_rows(match: CandidateMatch) -> list[list[object]]:
+    """``score_lines`` as table rows, with the final score."""
+    rows = [[line.component, line.value, f"{line.weight:.2f}", f"{line.points:.1f}"] for line in score_lines(match)]
     rows.append(["**Final score**", "", "", f"**{match.final_score}**"])
     return rows
 

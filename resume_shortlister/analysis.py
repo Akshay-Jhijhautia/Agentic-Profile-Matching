@@ -151,6 +151,24 @@ def generate_interview_questions(
     }
 
 
+def screened_match(
+    services: Services,
+    ref: str,
+    requirements: Requirements | None,
+    shortlist: list[CandidateMatch],
+    candidates: list[CandidateMatch],
+) -> CandidateMatch:
+    """A candidate's record in the current search: the shortlisted one (with rounds 2
+    and 3) when there is one, otherwise their round-1 screening."""
+    if requirements is None:
+        raise ValueError("No search has run yet. Describe a role first.")
+    profile = services.candidates.resolve(ref)
+    match = next((m for m in [*shortlist, *candidates] if m.id == profile.id), None)
+    if match is None:
+        raise LookupError(f"{profile.name} was not screened in the current search")
+    return match
+
+
 def detailed_report(
     services: Services,
     ref: str,
@@ -158,12 +176,6 @@ def detailed_report(
     shortlist: list[CandidateMatch],
     candidates: list[CandidateMatch],
 ) -> str:
-    """The detailed match report of a screened candidate: the shortlisted record (with
-    rounds 2 and 3) when there is one, otherwise their round-1 screening."""
-    if requirements is None:
-        raise ValueError("No search has run yet. Describe a role first.")
-    profile = services.candidates.resolve(ref)
-    match = next((m for m in [*shortlist, *candidates] if m.id == profile.id), None)
-    if match is None:
-        raise LookupError(f"{profile.name} was not screened in the current search")
+    """The detailed match report of a screened candidate (see ``screened_match``)."""
+    match = screened_match(services, ref, requirements, shortlist, candidates)
     return explainability.candidate_report(match, requirements)

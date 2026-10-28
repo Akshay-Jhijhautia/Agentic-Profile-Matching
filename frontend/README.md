@@ -47,5 +47,5 @@ npm run build
 | `src/api/client.ts` | Typed API calls; turns stream their events (`sse.ts`) |
 | `src/api/schema.ts` | Generated from `openapi.json`; do not edit |
 | `src/useSession.ts` | The session the page works on (kept in the URL) |
-| `src/components/` | Resumes, role, progress, confirmation, results |
+| `src/components/` | Resumes, role, results, the conversation (with progress and confirmation), the candidate drawer |
 | `scripts/build-info.mjs` | The source fingerprint written with each build |

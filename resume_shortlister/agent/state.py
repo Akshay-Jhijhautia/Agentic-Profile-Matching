@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import operator
+import sys
 from typing import Annotated, TypedDict
 
 from langchain_core.messages import AnyMessage
@@ -22,6 +23,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.graph.message import add_messages
 
+from .. import schemas
 from ..schemas import (
     Assessment,
     CandidateMatch,
@@ -77,9 +79,16 @@ STATE_MODELS = (
 )
 
 
+# Before 1.2 the package was ``profile_matching``, and checkpoints name each type by its module:
+# sessions saved then restore their types through this alias (without it, as plain dicts).
+LEGACY_SCHEMAS = "profile_matching.schemas"
+sys.modules.setdefault(LEGACY_SCHEMAS, schemas)
+
+
 def serializer() -> JsonPlusSerializer:
     """The checkpoint serializer, allowed to restore the agent's state types."""
-    return JsonPlusSerializer(allowed_msgpack_modules=STATE_MODELS)
+    legacy = [(LEGACY_SCHEMAS, model.__name__) for model in STATE_MODELS]
+    return JsonPlusSerializer(allowed_msgpack_modules=[*STATE_MODELS, *legacy])
 
 
 def make_checkpointer() -> InMemorySaver:

@@ -57,6 +57,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{session_id}/candidates/{candidate_id}/questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Interview Questions
+         * @description Questions aimed at the candidate's gaps, unverified claims and strengths: the chat's
+         *     own tool, so asking again gives the stored answer.
+         */
+        post: operations["interview_questions_api_sessions__session_id__candidates__candidate_id__questions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{session_id}/files": {
         parameters: {
             query?: never;
@@ -151,12 +172,59 @@ export interface components {
             /** Files */
             files: string[];
         };
-        /** CandidateReport */
-        CandidateReport: {
+        /**
+         * CandidateDetail
+         * @description Everything behind one candidate's place in the ranking (``explainability`` renders
+         *     the same record as the Markdown report, included for the download).
+         */
+        CandidateDetail: {
+            /** Borderline */
+            borderline: boolean;
+            /** Deep */
+            deep: number | null;
+            /** Evidence */
+            evidence: components["schemas"]["RequirementEvidence"][];
+            /** Excerpts */
+            excerpts: string[];
+            /** Experience Years */
+            experience_years: number | null;
+            /** Gaps */
+            gaps: string[];
+            /** Highest Degree */
+            highest_degree: string | null;
             /** Id */
             id: string;
+            /** Improvements */
+            improvements: components["schemas"]["Improvement"][];
+            /** Knocked Out */
+            knocked_out: string[];
+            /** Must Have Checks */
+            must_have_checks: components["schemas"]["MustHaveCheck"][];
+            /** Name */
+            name: string;
+            /** Rank */
+            rank: number;
+            recommendation: components["schemas"]["Recommendation"] | null;
             /** Report */
             report: string;
+            /** Resume */
+            resume: string;
+            /** Retrieval */
+            retrieval: number;
+            /** Retrieval Reasoning */
+            retrieval_reasoning: string;
+            /** Risk Flags */
+            risk_flags: components["schemas"]["RiskFlag"][];
+            /** Rubric */
+            rubric: string | null;
+            /** Score */
+            score: number;
+            /** Score Components */
+            score_components: components["schemas"]["ScoreComponent"][];
+            /** Strengths */
+            strengths: string[];
+            /** Summary */
+            summary: string | null;
         };
         /**
          * CandidateRow
@@ -186,6 +254,15 @@ export interface components {
             /** Score */
             score: number;
         };
+        /** FocusAreas */
+        FocusAreas: {
+            /** Gaps */
+            gaps: string[];
+            /** Strengths */
+            strengths: string[];
+            /** Unverified */
+            unverified: string[];
+        };
         /** FolderRequest */
         FolderRequest: {
             /** Path */
@@ -196,6 +273,59 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** Improvement */
+        Improvement: {
+            /**
+             * Gap
+             * @description The gap or doubt this addresses.
+             */
+            gap: string;
+            /**
+             * How To Verify
+             * @description How the recruiter can check it: a question, portfolio, reference.
+             */
+            how_to_verify: string;
+            /**
+             * Suggestion
+             * @description What the candidate could do or show to close it.
+             */
+            suggestion: string;
+        };
+        /**
+         * InterviewPlan
+         * @description Interview questions for one candidate and what they aim at.
+         */
+        InterviewPlan: {
+            /** Candidate Id */
+            candidate_id: string;
+            focus_areas: components["schemas"]["FocusAreas"];
+            /** Questions */
+            questions: components["schemas"]["InterviewQuestion"][];
+        };
+        /** InterviewQuestion */
+        InterviewQuestion: {
+            /**
+             * Focus
+             * @description The skill or topic the question probes.
+             */
+            focus: string;
+            /**
+             * Purpose
+             * @description close_gap: a missing requirement; verify_claim: a skill listed without clear evidence; assess_depth: a strength worth probing.
+             * @enum {string}
+             */
+            purpose: "close_gap" | "verify_claim" | "assess_depth";
+            /**
+             * Question
+             * @description The question, specific to this candidate's resume.
+             */
+            question: string;
+            /**
+             * Strong Answer
+             * @description What a strong answer would cover.
+             */
+            strong_answer: string;
+        };
         /** Message */
         Message: {
             /**
@@ -205,6 +335,60 @@ export interface components {
             role: "user" | "assistant";
             /** Text */
             text: string;
+        };
+        /** MustHaveCheck */
+        MustHaveCheck: {
+            /** Detail */
+            detail: string;
+            /** Requirement */
+            requirement: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "met" | "not_met" | "unverified";
+        };
+        /** Recommendation */
+        Recommendation: {
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "high" | "medium" | "low";
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "interview" | "not_now";
+            /** Rationale */
+            rationale: string;
+            /** Rule */
+            rule: string;
+        };
+        /**
+         * RequirementEvidence
+         * @description One requirement after the guardrails: the verdict that counts and why.
+         */
+        RequirementEvidence: {
+            /** Evidence */
+            evidence: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "must" | "nice";
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Requirement */
+            requirement: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "strong" | "partial" | "missing";
         };
         /** RequirementsView */
         RequirementsView: {
@@ -218,6 +402,31 @@ export interface components {
             nice_to_have: string[];
             /** Role Title */
             role_title: string;
+        };
+        /** RiskFlag */
+        RiskFlag: {
+            /**
+             * Flag
+             * @description The concern, specific to this resume.
+             */
+            flag: string;
+            /**
+             * Severity
+             * @description high: likely disqualifying (e.g. fabricated-looking claims); medium: needs checking (gaps, contradictions); low: minor.
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high";
+        };
+        /** ScoreComponent */
+        ScoreComponent: {
+            /** Component */
+            component: string;
+            /** Points */
+            points: number;
+            /** Value */
+            value: string;
+            /** Weight */
+            weight: number;
         };
         /** SessionSummary */
         SessionSummary: {
@@ -420,7 +629,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CandidateReport"];
+                    "application/json": components["schemas"]["CandidateDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    interview_questions_api_sessions__session_id__candidates__candidate_id__questions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterviewPlan"];
                 };
             };
             /** @description Validation Error */

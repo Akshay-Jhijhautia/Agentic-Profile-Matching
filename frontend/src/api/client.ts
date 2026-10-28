@@ -7,7 +7,9 @@ export type Snapshot = Schemas["Snapshot"];
 export type Status = Schemas["Status"];
 export type CandidateRow = Schemas["CandidateRow"];
 export type SessionSummary = Schemas["SessionSummary"];
-export type CandidateReport = Schemas["CandidateReport"];
+export type CandidateDetail = Schemas["CandidateDetail"];
+export type InterviewPlan = Schemas["InterviewPlan"];
+export type InterviewQuestion = Schemas["InterviewQuestion"];
 
 /** What the agent does during a turn (resume_shortlister/conversation.py: Event). */
 export interface AgentEvent {
@@ -84,7 +86,13 @@ export const api = {
   createSession: () => request<Snapshot>("/api/sessions", { method: "POST" }),
   session: (id: string) => request<Snapshot>(`/api/sessions/${encodeURIComponent(id)}`),
   candidate: (id: string, candidate: string) =>
-    request<CandidateReport>(`/api/sessions/${encodeURIComponent(id)}/candidates/${encodeURIComponent(candidate)}`),
+    request<CandidateDetail>(`/api/sessions/${encodeURIComponent(id)}/candidates/${encodeURIComponent(candidate)}`),
+  /** Interview questions for one candidate (a model call; asked again, the stored answer). */
+  questions: (id: string, candidate: string) =>
+    request<InterviewPlan>(
+      `/api/sessions/${encodeURIComponent(id)}/candidates/${encodeURIComponent(candidate)}/questions`,
+      { method: "POST" },
+    ),
   send: (id: string, text: string, onEvent: (event: AgentEvent) => void) =>
     stream(`/api/sessions/${encodeURIComponent(id)}/turns`, json({ text }), onEvent),
   loadFolder: (id: string, path: string, onEvent: (event: AgentEvent) => void) =>
@@ -98,9 +106,13 @@ export const api = {
   async downloadReport(id: string): Promise<void> {
     const response = await fetch(`/api/sessions/${encodeURIComponent(id)}/report`, withToken());
     if (!response.ok) throw await failure(response);
-    const url = URL.createObjectURL(await response.blob());
-    const link = Object.assign(document.createElement("a"), { href: url, download: `resume-shortlister-${id}.md` });
-    link.click();
-    URL.revokeObjectURL(url);
+    saveFile(await response.blob(), `resume-shortlister-${id}.md`);
   },
 };
+
+/** Hands ``blob`` to the browser as a download named ``name``. */
+export function saveFile(blob: Blob, name: string): void {
+  const url = URL.createObjectURL(blob);
+  Object.assign(document.createElement("a"), { href: url, download: name }).click();
+  URL.revokeObjectURL(url);
+}

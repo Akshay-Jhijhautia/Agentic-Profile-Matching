@@ -1,7 +1,9 @@
-import { Activity } from "./components/Activity";
+import { useMemo, useState } from "react";
+import { api, saveFile } from "./api/client";
+import { CandidateDrawer } from "./components/CandidateDrawer";
 import { ConfirmCard } from "./components/ConfirmCard";
+import { Conversation, suggestions } from "./components/Conversation";
 import { Header } from "./components/Header";
-import { Markdown } from "./components/Markdown";
 import { ResumesPanel } from "./components/ResumesPanel";
 import { Results } from "./components/Results";
 import { RolePanel } from "./components/RolePanel";
@@ -28,9 +30,21 @@ function HowItWorks() {
 
 export function App() {
   const session = useSession();
-  const { status, snapshot, activity, busy, error } = session;
-  const lastAgentMessage = [...(snapshot?.messages ?? [])].reverse().find((m) => m.role === "assistant");
+  const { status, snapshot, activity, busy, pending, error } = session;
+  const [selected, setSelected] = useState<string | null>(null);
+  const sessionId = snapshot?.session_id ?? "";
   const openQuestions = snapshot?.open_questions ?? [];
+  const messages = snapshot?.messages ?? [];
+
+  // Made once per candidate: the drawer loads again when they change.
+  const drawer = useMemo(
+    () =>
+      selected && {
+        load: () => api.candidate(sessionId, selected),
+        prepareQuestions: () => api.questions(sessionId, selected),
+      },
+    [sessionId, selected],
+  );
 
   return (
     <>
@@ -48,26 +62,33 @@ export function App() {
           <RolePanel busy={busy || !snapshot} onSubmit={session.send} />
         </aside>
         <div className="main">
-          <Activity events={activity} busy={busy} />
-          {openQuestions.length > 0 && !busy ? (
-            <ConfirmCard
-              questions={openQuestions}
+          {snapshot && <Results snapshot={snapshot} onDownload={session.downloadReport} onSelect={setSelected} />}
+          {messages.length > 0 || busy ? (
+            <Conversation
+              messages={messages}
+              activity={activity}
               busy={busy}
-              onConfirm={() => session.send("yes")}
-              onChange={session.send}
+              pending={pending}
+              suggestions={snapshot ? suggestions(snapshot) : []}
+              lastReply={
+                openQuestions.length > 0 && (
+                  <ConfirmCard questions={openQuestions} busy={busy} onConfirm={() => session.send("yes")} onChange={session.send} />
+                )
+              }
+              onSend={session.send}
             />
           ) : (
-            lastAgentMessage &&
-            !busy && (
-              <section className="card agent">
-                <Markdown text={lastAgentMessage.text} />
-              </section>
-            )
+            <HowItWorks />
           )}
-          {snapshot && <Results snapshot={snapshot} onDownload={session.downloadReport} />}
-          {!snapshot?.screened && !busy && !openQuestions.length && <HowItWorks />}
         </div>
       </main>
+      {drawer && (
+        <CandidateDrawer
+          {...drawer}
+          onDownload={(detail) => saveFile(new Blob([detail.report], { type: "text/markdown" }), `${detail.id}.md`)}
+          onClose={() => setSelected(null)}
+        />
+      )}
       <footer>
         Resume Shortlister {status?.version} · runs on this computer · recommendations are a starting point; people make the
         hiring decisions

@@ -15,6 +15,16 @@
   installing needs no Node.
 - `resume-shortlister web --host`: the Docker image serves the web app; publish
   its port on this computer only (`-p 127.0.0.1:8765:8765`).
+- **Candidate detail in the browser**: select a shortlisted candidate for the
+  recommendation and the rule behind it, how the score adds up, the evidence
+  per requirement (with the resume quote), must-have checks, strengths, gaps,
+  risk flags and improvement suggestions, and their report as a download.
+  **Interview questions** for that candidate are written on request (the
+  chat's own tool, so asking again gives the stored answer).
+- **Conversation in the browser**: ask about the candidates, compare them or
+  change the role in a chat below the shortlist, with each turn's steps,
+  suggested follow-ups from the shortlist, and the confirmation card in place
+  of the agent's question.
 
 ### Changed
 
@@ -29,8 +39,11 @@
   - An existing `~/.profile-match` keeps being used (its sessions and indexes
     record absolute paths, so it is not moved). Creating
     `~/.resume-shortlister` starts fresh instead.
+  - Sessions saved before the rename reopen with their requirements and
+    results.
 - The terminal chat and the web app share one `Conversation` that turns the
   agent's steps into events.
+- The agent's answers name candidates by name instead of by id.
 
 ### Fixed
 

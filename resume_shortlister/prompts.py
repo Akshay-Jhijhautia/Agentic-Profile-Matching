@@ -128,7 +128,8 @@ reformat it; reply with a one or two sentence takeaway.
 - write_file: save Markdown (e.g. a report) to the reports directory.
 - extract_requirements: analyse a job description without changing the search.
 
-Refer to candidates by the ids in the shortlist. For a side-by-side comparison, \
+Call tools with the candidate ids in the shortlist, but name candidates by \
+their names in answers (the recruiter never sees ids). For a side-by-side comparison, \
 answer with a Markdown table (one column per candidate: score, must-haves, key \
 strengths, gaps) followed by the verdict. When explaining a ranking, name the \
 score components and must-have checks that differ. Be concise.

@@ -1,14 +1,21 @@
 import type { CandidateRow, Snapshot } from "../api/client";
 
-function Recommendation({ row }: { row: CandidateRow }) {
-  if (!row.decision) return <span className="muted">–</span>;
+interface DecisionProps {
+  decision: CandidateRow["decision"];
+  confidence: string | null;
+  borderline: boolean;
+}
+
+/** The round-3 recommendation as a pill, with its confidence. */
+export function Decision({ decision, confidence, borderline }: DecisionProps) {
+  if (!decision) return <span className="muted">–</span>;
   return (
     <span className="recommendation">
-      <span className={`pill ${row.decision === "interview" ? "yes" : "no"}`}>
-        {row.decision === "interview" ? "✓ Interview" : "Not now"}
+      <span className={`pill ${decision === "interview" ? "yes" : "no"}`}>
+        {decision === "interview" ? "✓ Interview" : "Not now"}
       </span>
-      <span className="muted">{row.confidence}</span>
-      {row.borderline && <span className="tag">borderline</span>}
+      <span className="muted">{confidence}</span>
+      {borderline && <span className="tag">borderline</span>}
     </span>
   );
 }
@@ -18,8 +25,14 @@ function MustHaves({ text }: { text: string }) {
   return <span className={tone}>{text}</span>;
 }
 
-/** The ranked shortlist with every round's scores and the recommendation. */
-export function Results({ snapshot, onDownload }: { snapshot: Snapshot; onDownload: () => void }) {
+interface Props {
+  snapshot: Snapshot;
+  onDownload: () => void;
+  onSelect: (candidateId: string) => void;
+}
+
+/** The ranked shortlist with every round's scores and the recommendation; a row opens the candidate. */
+export function Results({ snapshot, onDownload, onSelect }: Props) {
   const { requirements, shortlist } = snapshot;
   if (!requirements || !snapshot.screened) return null;
   const interviews = shortlist.filter((row) => row.decision === "interview").length;
@@ -60,9 +73,13 @@ export function Results({ snapshot, onDownload }: { snapshot: Snapshot; onDownlo
             </thead>
             <tbody>
               {shortlist.map((row) => (
-                <tr key={row.id} className={row.decision === "not_now" ? "dim" : ""}>
+                <tr key={row.id} className={`candidate ${row.decision === "not_now" ? "dim" : ""}`} onClick={() => onSelect(row.id)}>
                   <td className="muted">{row.rank}</td>
-                  <td className="name">{row.name}</td>
+                  <td className="name">
+                    <button type="button" className="link" onClick={(event) => (event.stopPropagation(), onSelect(row.id))}>
+                      {row.name}
+                    </button>
+                  </td>
                   <td className="score">{row.score}</td>
                   <td className="muted">{row.retrieval}</td>
                   <td className="muted">{row.deep ?? "–"}</td>
@@ -70,12 +87,13 @@ export function Results({ snapshot, onDownload }: { snapshot: Snapshot; onDownlo
                     <MustHaves text={row.must_haves} />
                   </td>
                   <td>
-                    <Recommendation row={row} />
+                    <Decision decision={row.decision} confidence={row.confidence} borderline={row.borderline} />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <p className="hint">Select a candidate for the evidence behind their place, and interview questions.</p>
         </div>
       ) : (
         <p className="muted">No candidate meets every must-have. Consider relaxing one in the role.</p>

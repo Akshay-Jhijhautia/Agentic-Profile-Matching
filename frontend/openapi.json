@@ -18,22 +18,201 @@
         "title": "Body_upload_files_api_sessions__session_id__files_post",
         "type": "object"
       },
-      "CandidateReport": {
+      "CandidateDetail": {
+        "description": "Everything behind one candidate's place in the ranking (``explainability`` renders\nthe same record as the Markdown report, included for the download).",
         "properties": {
+          "borderline": {
+            "title": "Borderline",
+            "type": "boolean"
+          },
+          "deep": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deep"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementEvidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "excerpts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Excerpts",
+            "type": "array"
+          },
+          "experience_years": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Experience Years"
+          },
+          "gaps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "highest_degree": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highest Degree"
+          },
           "id": {
             "title": "Id",
             "type": "string"
           },
+          "improvements": {
+            "items": {
+              "$ref": "#/components/schemas/Improvement"
+            },
+            "title": "Improvements",
+            "type": "array"
+          },
+          "knocked_out": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Knocked Out",
+            "type": "array"
+          },
+          "must_have_checks": {
+            "items": {
+              "$ref": "#/components/schemas/MustHaveCheck"
+            },
+            "title": "Must Have Checks",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "recommendation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Recommendation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "report": {
             "title": "Report",
             "type": "string"
+          },
+          "resume": {
+            "title": "Resume",
+            "type": "string"
+          },
+          "retrieval": {
+            "title": "Retrieval",
+            "type": "integer"
+          },
+          "retrieval_reasoning": {
+            "title": "Retrieval Reasoning",
+            "type": "string"
+          },
+          "risk_flags": {
+            "items": {
+              "$ref": "#/components/schemas/RiskFlag"
+            },
+            "title": "Risk Flags",
+            "type": "array"
+          },
+          "rubric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rubric"
+          },
+          "score": {
+            "title": "Score",
+            "type": "integer"
+          },
+          "score_components": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreComponent"
+            },
+            "title": "Score Components",
+            "type": "array"
+          },
+          "strengths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Strengths",
+            "type": "array"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
           }
         },
         "required": [
           "id",
+          "name",
+          "rank",
+          "score",
+          "retrieval",
+          "deep",
+          "resume",
+          "experience_years",
+          "highest_degree",
+          "recommendation",
+          "borderline",
+          "knocked_out",
+          "summary",
+          "score_components",
+          "rubric",
+          "must_have_checks",
+          "evidence",
+          "strengths",
+          "gaps",
+          "risk_flags",
+          "improvements",
+          "retrieval_reasoning",
+          "excerpts",
           "report"
         ],
-        "title": "CandidateReport",
+        "title": "CandidateDetail",
         "type": "object"
       },
       "CandidateRow": {
@@ -125,6 +304,38 @@
         "title": "CandidateRow",
         "type": "object"
       },
+      "FocusAreas": {
+        "properties": {
+          "gaps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "strengths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Strengths",
+            "type": "array"
+          },
+          "unverified": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unverified",
+            "type": "array"
+          }
+        },
+        "required": [
+          "gaps",
+          "unverified",
+          "strengths"
+        ],
+        "title": "FocusAreas",
+        "type": "object"
+      },
       "FolderRequest": {
         "properties": {
           "path": {
@@ -151,6 +362,95 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "Improvement": {
+        "properties": {
+          "gap": {
+            "description": "The gap or doubt this addresses.",
+            "title": "Gap",
+            "type": "string"
+          },
+          "how_to_verify": {
+            "description": "How the recruiter can check it: a question, portfolio, reference.",
+            "title": "How To Verify",
+            "type": "string"
+          },
+          "suggestion": {
+            "description": "What the candidate could do or show to close it.",
+            "title": "Suggestion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "gap",
+          "suggestion",
+          "how_to_verify"
+        ],
+        "title": "Improvement",
+        "type": "object"
+      },
+      "InterviewPlan": {
+        "description": "Interview questions for one candidate and what they aim at.",
+        "properties": {
+          "candidate_id": {
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "focus_areas": {
+            "$ref": "#/components/schemas/FocusAreas"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/InterviewQuestion"
+            },
+            "title": "Questions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "focus_areas",
+          "questions"
+        ],
+        "title": "InterviewPlan",
+        "type": "object"
+      },
+      "InterviewQuestion": {
+        "properties": {
+          "focus": {
+            "description": "The skill or topic the question probes.",
+            "title": "Focus",
+            "type": "string"
+          },
+          "purpose": {
+            "description": "close_gap: a missing requirement; verify_claim: a skill listed without clear evidence; assess_depth: a strength worth probing.",
+            "enum": [
+              "close_gap",
+              "verify_claim",
+              "assess_depth"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "question": {
+            "description": "The question, specific to this candidate's resume.",
+            "title": "Question",
+            "type": "string"
+          },
+          "strong_answer": {
+            "description": "What a strong answer would cover.",
+            "title": "Strong Answer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question",
+          "focus",
+          "purpose",
+          "strong_answer"
+        ],
+        "title": "InterviewQuestion",
+        "type": "object"
+      },
       "Message": {
         "properties": {
           "role": {
@@ -171,6 +471,114 @@
           "text"
         ],
         "title": "Message",
+        "type": "object"
+      },
+      "MustHaveCheck": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "requirement": {
+            "title": "Requirement",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "met",
+              "not_met",
+              "unverified"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requirement",
+          "status",
+          "detail"
+        ],
+        "title": "MustHaveCheck",
+        "type": "object"
+      },
+      "Recommendation": {
+        "properties": {
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "interview",
+              "not_now"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "confidence",
+          "rule",
+          "rationale"
+        ],
+        "title": "Recommendation",
+        "type": "object"
+      },
+      "RequirementEvidence": {
+        "description": "One requirement after the guardrails: the verdict that counts and why.",
+        "properties": {
+          "evidence": {
+            "title": "Evidence",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "must",
+              "nice"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "requirement": {
+            "title": "Requirement",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "strong",
+              "partial",
+              "missing"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requirement",
+          "kind",
+          "verdict",
+          "evidence"
+        ],
+        "title": "RequirementEvidence",
         "type": "object"
       },
       "RequirementsView": {
@@ -224,6 +632,59 @@
           "min_degree"
         ],
         "title": "RequirementsView",
+        "type": "object"
+      },
+      "RiskFlag": {
+        "properties": {
+          "flag": {
+            "description": "The concern, specific to this resume.",
+            "title": "Flag",
+            "type": "string"
+          },
+          "severity": {
+            "description": "high: likely disqualifying (e.g. fabricated-looking claims); medium: needs checking (gaps, contradictions); low: minor.",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "flag",
+          "severity"
+        ],
+        "title": "RiskFlag",
+        "type": "object"
+      },
+      "ScoreComponent": {
+        "properties": {
+          "component": {
+            "title": "Component",
+            "type": "string"
+          },
+          "points": {
+            "title": "Points",
+            "type": "number"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "component",
+          "value",
+          "weight",
+          "points"
+        ],
+        "title": "ScoreComponent",
         "type": "object"
       },
       "SessionSummary": {
@@ -609,7 +1070,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CandidateReport"
+                  "$ref": "#/components/schemas/CandidateDetail"
                 }
               }
             },
@@ -627,6 +1088,55 @@
           }
         },
         "summary": "Candidate"
+      }
+    },
+    "/api/sessions/{session_id}/candidates/{candidate_id}/questions": {
+      "post": {
+        "description": "Questions aimed at the candidate's gaps, unverified claims and strengths: the chat's\nown tool, so asking again gives the stored answer.",
+        "operationId": "interview_questions_api_sessions__session_id__candidates__candidate_id__questions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterviewPlan"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Interview Questions"
       }
     },
     "/api/sessions/{session_id}/files": {

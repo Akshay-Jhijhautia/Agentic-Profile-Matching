@@ -12,6 +12,8 @@ export function useSession() {
   // What the agent did during the current (or last) turn.
   const [activity, setActivity] = useState<AgentEvent[]>([]);
   const [busy, setBusy] = useState(false);
+  // The message being answered, shown until the session comes back with it.
+  const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // React runs effects twice in development (StrictMode); open one session, not two.
   const opening = useRef(false);
@@ -34,9 +36,10 @@ export function useSession() {
   }, []);
 
   const run = useCallback(
-    async (start: Start) => {
+    async (said: string, start: Start) => {
       if (busy) return;
       setBusy(true);
+      setPending(said);
       setError(null);
       setActivity([]);
       try {
@@ -45,6 +48,7 @@ export function useSession() {
         setError(message(e));
       } finally {
         setBusy(false);
+        setPending(null);
       }
     },
     [busy],
@@ -56,10 +60,16 @@ export function useSession() {
     snapshot,
     activity,
     busy,
+    pending,
     error,
-    send: (text: string) => run((onEvent) => api.send(id, text, onEvent)),
-    loadFolder: (path: string) => run((onEvent) => api.loadFolder(id, path, onEvent)),
-    upload: (files: File[]) => run((onEvent) => api.upload(id, files, onEvent)),
+    send: (text: string) => run(text, (onEvent) => api.send(id, text, onEvent)),
+    loadFolder: (path: string) => run(`Load the resumes in ${path}`, (onEvent) => api.loadFolder(id, path, onEvent)),
+    upload: (files: File[]) => run(uploadMessage(files), (onEvent) => api.upload(id, files, onEvent)),
     downloadReport: () => api.downloadReport(id).catch((e) => setError(message(e))),
   };
+}
+
+/** An upload as the chat records it (``web/models.py: describe_command``). */
+export function uploadMessage(files: File[]): string {
+  return `Upload ${files.length} file${files.length === 1 ? "" : "s"}: ${files.map((file) => file.name).join(", ")}`;
 }

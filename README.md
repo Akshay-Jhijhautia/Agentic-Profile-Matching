@@ -40,11 +40,12 @@ you> Write 3 interview questions for the top candidate
   server. Embeddings, index and data stay on your machine; with Ollama, nothing
   leaves it.
 - **Measured, not claimed.** Ranking quality, run-to-run stability and model
-  agreement are measured with scripts in this repository, alongside 537 tests.
+  agreement are measured with scripts in this repository, alongside 559 tests.
 
-**Status:** developer preview (v1.1, command line). Validated on synthetic
-resumes only, so read [Responsible use](#responsible-use) and
-[Limitations](#limitations) before relying on it. A web interface is next.
+**Status:** developer preview (v1.1; the browser interface,
+`resume-shortlister web`, is new on the main branch and comes with 1.2).
+Validated on synthetic resumes only, so read [Responsible use](#responsible-use)
+and [Limitations](#limitations) before relying on it.
 
 ## Installation
 
@@ -103,7 +104,7 @@ From a source checkout, `python main.py ...` runs the same commands.
 | `resume-shortlister sessions [--delete ID]` | Saved chat sessions, newest first: id, date, role, resumes |
 | `resume-shortlister clean [--older-than DAYS] [--yes]` | Old upload batches and sessions (default 30 days), stored model answers unused that long, indexes of deleted folders, and a ChromaDB index left by versions before 1.1; lists them, deletes with `--yes` |
 | `resume-shortlister cache [--clear]` | Stored model answers (see [Reproducible results](#reproducible-results)); `--clear` deletes them |
-| `resume-shortlister web [--port PORT] [--no-browser]` | The app in your browser, on this computer only (preview: screening; candidate details and chat in the browser are next) |
+| `resume-shortlister web [--port PORT] [--no-browser]` | The app in your browser, on this computer only: screening, candidate details, interview questions and the chat |
 | `resume-shortlister --version` | The installed version |
 
 ### Local data

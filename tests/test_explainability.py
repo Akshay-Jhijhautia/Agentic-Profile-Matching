@@ -72,7 +72,7 @@ def test_score_rows_show_weights_and_the_final_score(john):
     assert [row[0] for row in rows] == [
         "Semantic fit", "Keyword match", "Must-have skill coverage", "Deep analysis", "**Final score**",
     ]
-    assert rows[3][1:3] == [full_record(john).assessment.deep_score, f"{DEEP_WEIGHT:.2f}"]
+    assert rows[3][1:3] == [str(full_record(john).assessment.deep_score), f"{DEEP_WEIGHT:.2f}"]
     assert rows[-1][-1] == f"**{full_record(john).final_score}**"
 
 

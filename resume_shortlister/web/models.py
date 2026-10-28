@@ -11,9 +11,18 @@ from pydantic import BaseModel
 
 from ..conversation import Conversation, Event
 from ..agent.routing import LOAD_COMMANDS
-from ..explainability import must_have_cell
+from ..explainability import RUBRIC_NOTE, candidate_report, must_have_cell, score_lines, strengths_and_gaps
 from ..pools import split_paths
-from ..schemas import CandidateMatch, Requirements
+from ..schemas import (
+    CandidateMatch,
+    Improvement,
+    InterviewQuestion,
+    MustHaveCheck,
+    Recommendation,
+    RequirementEvidence,
+    Requirements,
+    RiskFlag,
+)
 from ..sessions import SessionInfo
 
 
@@ -146,9 +155,79 @@ class FolderRequest(BaseModel):
     path: str
 
 
-class CandidateReport(BaseModel):
+class ScoreComponent(BaseModel):
+    component: str  # "Semantic fit", "Deep analysis"…
+    value: str  # the component's own score: "72%", or the deep score "85"
+    weight: float  # its share of the final score
+    points: float  # what it adds to the final score
+
+
+class CandidateDetail(BaseModel):
+    """Everything behind one candidate's place in the ranking (``explainability`` renders
+    the same record as the Markdown report, included for the download)."""
+
     id: str
+    name: str
+    rank: int
+    score: int
+    retrieval: int
+    deep: int | None
+    resume: str  # the file name
+    experience_years: float | None
+    highest_degree: str | None
+    recommendation: Recommendation | None
+    borderline: bool
+    knocked_out: list[str]  # the must-haves they fail
+    summary: str | None  # the deep review's view of their fit
+    score_components: list[ScoreComponent]
+    rubric: str | None  # how the deep score is computed, once there is one
+    must_have_checks: list[MustHaveCheck]
+    evidence: list[RequirementEvidence]  # a verdict per requirement, with a quote from the resume
+    strengths: list[str]
+    gaps: list[str]
+    risk_flags: list[RiskFlag]
+    improvements: list[Improvement]  # what would make a borderline candidate a clear interview
+    retrieval_reasoning: str
+    excerpts: list[str]
     report: str  # Markdown
+
+    @classmethod
+    def of(cls, match: CandidateMatch, requirements: Requirements) -> CandidateDetail:
+        assessment = match.assessment
+        strengths, gaps = strengths_and_gaps(match, requirements)
+        return cls(
+            id=match.id, name=match.name, rank=match.rank, score=match.final_score, retrieval=match.match_score,
+            deep=assessment.deep_score if assessment else None, resume=Path(match.resume).name,
+            experience_years=match.experience_years, highest_degree=match.highest_degree,
+            recommendation=match.recommendation, borderline=match.borderline,
+            knocked_out=match.failed_requirements, summary=assessment.summary if assessment else None,
+            score_components=[ScoreComponent(**vars(line)) for line in score_lines(match)],
+            rubric=RUBRIC_NOTE if assessment else None, must_have_checks=match.must_have_checks,
+            evidence=assessment.requirement_evidence if assessment else [], strengths=strengths, gaps=gaps,
+            risk_flags=assessment.risk_flags if assessment else [], improvements=match.improvements or [],
+            retrieval_reasoning=match.reasoning, excerpts=match.excerpts,
+            report=candidate_report(match, requirements),
+        )
+
+
+class FocusAreas(BaseModel):
+    gaps: list[str]
+    unverified: list[str]
+    strengths: list[str]
+
+
+class InterviewPlan(BaseModel):
+    """Interview questions for one candidate and what they aim at."""
+
+    candidate_id: str
+    focus_areas: FocusAreas
+    questions: list[InterviewQuestion]
+
+    @classmethod
+    def of(cls, result: dict) -> InterviewPlan:
+        """From ``analysis.generate_interview_questions``."""
+        return cls(candidate_id=result["candidate"]["id"], focus_areas=result["focus_areas"],
+                   questions=result["questions"])
 
 
 def event_payload(event: Event) -> dict:
