@@ -6,7 +6,7 @@ import threading
 import numpy as np
 import pytest
 
-from profile_matching.rag.vector_store import DB_FILE, Chunk, VectorStore
+from resume_shortlister.rag.vector_store import DB_FILE, Chunk, VectorStore
 
 
 @pytest.fixture
@@ -137,5 +137,5 @@ def test_an_index_from_a_newer_version_is_refused(tmp_path):
     VectorStore(tmp_path / "index").close()
     with sqlite3.connect(tmp_path / "index" / DB_FILE) as db:
         db.execute("PRAGMA user_version = 99")
-    with pytest.raises(ValueError, match="newer profile-match"):
+    with pytest.raises(ValueError, match="newer resume-shortlister"):
         VectorStore(tmp_path / "index")

@@ -6,13 +6,13 @@ import re
 
 from fastapi.testclient import TestClient
 
-from profile_matching.web import app as web_app
-from profile_matching.web.app import TOKEN_HEADER, create_app
+from resume_shortlister.web import app as web_app
+from resume_shortlister.web.app import TOKEN_HEADER, create_app
 from scripts import export_openapi
 from tests.paths import ROOT
 
 FRONTEND = ROOT / "frontend"
-STATIC = ROOT / "profile_matching" / "web" / "static"
+STATIC = ROOT / "resume_shortlister" / "web" / "static"
 # Must match frontend/scripts/build-info.mjs.
 SOURCES = ["index.html", "package.json", "package-lock.json", "tsconfig.json", "vite.config.ts", "src"]
 
@@ -50,8 +50,8 @@ def _client(make_services=None):
 def test_the_page_carries_the_token_and_its_assets_are_served():
     page = _client().get("/")
     assert page.status_code == 200 and page.headers["cache-control"] == "no-store"
-    assert '<meta name="profile-match-token" content="t0ken"' in page.text
-    assert "__PROFILE_MATCH_TOKEN__" not in page.text
+    assert '<meta name="resume-shortlister-token" content="t0ken"' in page.text
+    assert "__RESUME_SHORTLISTER_TOKEN__" not in page.text
     for asset in re.findall(r'(?:src|href)="(/assets/[^"]+)"', page.text):
         response = _client().get(asset)
         assert response.status_code == 200 and response.content, asset
@@ -60,4 +60,4 @@ def test_the_page_carries_the_token_and_its_assets_are_served():
 def test_a_missing_build_is_explained(monkeypatch, tmp_path):
     monkeypatch.setattr(web_app, "STATIC_DIR", tmp_path)
     page = _client().get("/")
-    assert page.status_code == 503 and "profile-match chat" in page.text
+    assert page.status_code == 503 and "resume-shortlister chat" in page.text

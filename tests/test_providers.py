@@ -8,10 +8,10 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 from langchain_openai import ChatOpenAI
 
-from profile_matching import llm, providers
-from profile_matching.agent.text import last_ai_text
-from profile_matching.config import Settings
-from profile_matching.rag import resume_rag
+from resume_shortlister import llm, providers
+from resume_shortlister.agent.text import last_ai_text
+from resume_shortlister.config import Settings
+from resume_shortlister.rag import resume_rag
 from tests.fakes import FakeChatModel
 
 REQUEST = httpx.Request("POST", "https://example.test")
@@ -133,7 +133,7 @@ def test_an_override_for_another_provider_gets_none_of_the_configured_endpoint(n
 
 def test_missing_integration_names_the_extra(monkeypatch):
     broken = dataclasses.replace(providers.PROVIDERS["anthropic"], model_class="no_such_module:Chat")
-    with pytest.raises(ValueError, match=r"pip install 'profile-match\[anthropic\]'"):
+    with pytest.raises(ValueError, match=r"pip install 'resume-shortlister\[anthropic\]'"):
         providers.create_chat_model(broken, "m", Settings())
 
 

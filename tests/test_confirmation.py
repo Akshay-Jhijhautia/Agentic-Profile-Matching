@@ -7,8 +7,8 @@ from langchain_core.messages import AIMessage
 from rich.console import Console
 
 import matching_agent
-from profile_matching import cli
-from profile_matching.schemas import IntentDecision, Requirements
+from resume_shortlister import cli
+from resume_shortlister.schemas import IntentDecision, Requirements
 from tests.fakes import SCREENING_RESPONSES, FakeChatModel
 from tests.test_conversation import ROLE, intent, output, route_by_keyword, state
 

@@ -1,6 +1,6 @@
 import pytest
 
-from profile_matching.candidates import CandidateDirectory, CandidateNotFoundError, candidate_id
+from resume_shortlister.candidates import CandidateDirectory, CandidateNotFoundError, candidate_id
 
 
 class StubRAG:

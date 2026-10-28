@@ -118,7 +118,7 @@ def run(
         f"Session {session.session_id}. {loaded}\n\n"
         "Describe a role, paste a job description or give a JD file path. For example:\n"
         f"{examples}\n\nCommands: /resumes <folder> /add <files> /help /report /reset /exit",
-        title=f"Matching agent ({model_name})", border_style="cyan",
+        title=f"Resume Shortlister ({model_name})", border_style="cyan",
     ))
     if session_id and session.values:
         requirements = session.values.get("requirements")

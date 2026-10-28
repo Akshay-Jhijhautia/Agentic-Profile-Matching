@@ -4,19 +4,31 @@
 
 ### Added
 
-- **Local web API** (`profile-match web`): sessions, streamed turns (Server-Sent
-  Events), folder loading, resume uploads, candidate reports and the report
-  download, served on 127.0.0.1 only, with a per-launch token and a Host check.
-- **Browser interface** (`profile-match web` opens it): drop resume files or
-  pick a folder, describe the role, follow the screening as it runs, confirm
+- **Local web API** (`resume-shortlister web`): sessions, streamed turns
+  (Server-Sent Events), folder loading, resume uploads, candidate reports and
+  the report download, served on 127.0.0.1 only, with a per-launch token and a
+  Host check.
+- **Browser interface** (`resume-shortlister web` opens it): drop resume files
+  or pick a folder, describe the role, follow the screening as it runs, confirm
   open requirements, and see the ranked shortlist with its recommendations;
   download the report. Built with React and TypeScript into the package, so
   installing needs no Node.
-- `profile-match web --host`: the Docker image serves the web app; publish its
-  port on this computer only (`-p 127.0.0.1:8765:8765`).
+- `resume-shortlister web --host`: the Docker image serves the web app; publish
+  its port on this computer only (`-p 127.0.0.1:8765:8765`).
 
 ### Changed
 
+- **Renamed from Profile Match to Resume Shortlister**, a name that says what it
+  does. The package is `resume-shortlister` (`resume_shortlister` in Python),
+  the command `resume-shortlister`, the data home `~/.resume-shortlister` and
+  the settings `RESUME_SHORTLISTER_*`. Upgrading needs no changes:
+  - `profile-match` still runs, with a note; it will be removed in a later
+    version.
+  - `PROFILE_MATCH_*` settings are still read; the new names win when both are
+    set.
+  - An existing `~/.profile-match` keeps being used (its sessions and indexes
+    record absolute paths, so it is not moved). Creating
+    `~/.resume-shortlister` starts fresh instead.
 - The terminal chat and the web app share one `Conversation` that turns the
   agent's steps into events.
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from profile_matching.web.app import create_app
+from resume_shortlister.web.app import create_app
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "frontend" / "openapi.json"
 

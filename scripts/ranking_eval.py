@@ -42,11 +42,11 @@ from itertools import combinations
 from pathlib import Path
 from statistics import mean
 
-from profile_matching import llm, screening
-from profile_matching.config import Settings
-from profile_matching.rag import resume_rag
-from profile_matching.schemas import Requirements
-from profile_matching.services import Services
+from resume_shortlister import llm, screening
+from resume_shortlister.config import Settings
+from resume_shortlister.rag import resume_rag
+from resume_shortlister.schemas import Requirements
+from resume_shortlister.services import Services
 from scripts import generate_sample_resumes
 
 TOP_K = 10

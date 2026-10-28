@@ -1,6 +1,6 @@
 import pytest
 
-from profile_matching.rag import skills_vocab
+from resume_shortlister.rag import skills_vocab
 
 
 @pytest.mark.parametrize(

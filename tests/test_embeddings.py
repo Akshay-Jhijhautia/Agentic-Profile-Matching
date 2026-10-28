@@ -6,10 +6,10 @@ import sys
 import numpy as np
 import pytest
 
-from profile_matching import pools
-from profile_matching.config import Settings
-from profile_matching.pools import ResumePool
-from profile_matching.rag import job_matcher, resume_rag
+from resume_shortlister import pools
+from resume_shortlister.config import Settings
+from resume_shortlister.pools import ResumePool
+from resume_shortlister.rag import job_matcher, resume_rag
 from tests.paths import RESUMES_DIR
 
 

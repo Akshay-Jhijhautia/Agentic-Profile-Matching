@@ -9,11 +9,11 @@ from datetime import datetime, timedelta
 import pytest
 from rich.console import Console
 
-from profile_matching import app, cli, config, maintenance, sessions
-from profile_matching.agent.graph import build_graph
-from profile_matching.pools import ResumePool
-from profile_matching.schemas import IntentDecision, Requirements
-from profile_matching.services import Services
+from resume_shortlister import app, cli, config, maintenance, sessions
+from resume_shortlister.agent.graph import build_graph
+from resume_shortlister.pools import ResumePool
+from resume_shortlister.schemas import IntentDecision, Requirements
+from resume_shortlister.services import Services
 from tests.fakes import SCREENING_RESPONSES, FakeChatModel
 from tests.paths import RESUMES_DIR
 from tests.test_conversation import ROLE, route_by_keyword
@@ -212,7 +212,7 @@ def _resume_folder(tmp_path):
 
 def test_version(capsys):
     assert app.main(["--version"]) == 0
-    assert capsys.readouterr().out.startswith("profile-match ")
+    assert capsys.readouterr().out.startswith("resume-shortlister ")
 
 
 def test_env_files_from_the_folder_and_the_data_home(tmp_path, monkeypatch):
@@ -223,7 +223,7 @@ def test_env_files_from_the_folder_and_the_data_home(tmp_path, monkeypatch):
     (work / ".env").write_text("OPENAI_MODEL=from-folder\n")
     for name in ("OPENAI_MODEL", "SHORTLIST_SIZE"):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("PROFILE_MATCH_HOME", str(home))
+    monkeypatch.setenv("RESUME_SHORTLISTER_HOME", str(home))
     monkeypatch.chdir(work)
     config.get_settings.cache_clear()
     try:

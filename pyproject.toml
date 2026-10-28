@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]  # SPDX license expressions
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "profile-match"
+name = "resume-shortlister"
 dynamic = ["version"]
 description = "Explainable resume-screening assistant: ranks resumes against a job description, shows the evidence, and leaves the decision to the recruiter."
 readme = "README.md"
@@ -56,22 +56,24 @@ ollama = ["langchain-ollama>=1.1,<2"]
 dev = ["pytest>=8.0", "pyflakes>=3.2", "fpdf2>=2.7"]
 
 [project.scripts]
-profile-match = "profile_matching.app:main"
+resume-shortlister = "resume_shortlister.app:main"
+# The command's name before 1.2 (Profile Match); prints a note pointing to the new one.
+profile-match = "resume_shortlister.app:main"
 
 [project.urls]
-Repository = "https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching"
-Changelog = "https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching/blob/main/CHANGELOG.md"
-Issues = "https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching/issues"
+Repository = "https://github.com/Akshay-Jhijhautia/resume-shortlister"
+Changelog = "https://github.com/Akshay-Jhijhautia/resume-shortlister/blob/main/CHANGELOG.md"
+Issues = "https://github.com/Akshay-Jhijhautia/resume-shortlister/issues"
 
 [tool.setuptools.dynamic]
-version = { attr = "profile_matching.__version__" }
+version = { attr = "resume_shortlister.__version__" }
 
 [tool.setuptools.packages.find]
-include = ["profile_matching*"]
+include = ["resume_shortlister*"]
 
 [tool.setuptools.package-data]
 # The browser app, built from frontend/ into the package.
-"profile_matching.web" = ["static/*.html", "static/*.json", "static/assets/*"]
+"resume_shortlister.web" = ["static/*.html", "static/*.json", "static/assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

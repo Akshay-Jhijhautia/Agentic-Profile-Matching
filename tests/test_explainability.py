@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 
 import matching_agent
-from profile_matching import explainability, screening
-from profile_matching.markdown import sentences
-from profile_matching.schemas import (
+from resume_shortlister import explainability, screening
+from resume_shortlister.markdown import sentences
+from resume_shortlister.schemas import (
     DEEP_WEIGHT,
     DeepReview,
     Improvement,
@@ -16,7 +16,7 @@ from profile_matching.schemas import (
     Requirements,
     RiskFlag,
 )
-from profile_matching.tools import make_tools
+from resume_shortlister.tools import make_tools
 from tests.fakes import SCREENING_RESPONSES, FakeChatModel, fake_assessment, fake_review
 
 ROLE = Requirements.model_validate({

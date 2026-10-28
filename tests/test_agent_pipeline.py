@@ -6,11 +6,11 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 import matching_agent
-from profile_matching import reports, screening
-from profile_matching.agent.state import make_checkpointer
-from profile_matching.pools import ResumePool
-from profile_matching.rag import resume_rag
-from profile_matching.schemas import CandidateMatch, Requirements
+from resume_shortlister import reports, screening
+from resume_shortlister.agent.state import make_checkpointer
+from resume_shortlister.pools import ResumePool
+from resume_shortlister.rag import resume_rag
+from resume_shortlister.schemas import CandidateMatch, Requirements
 from tests.fakes import SCREENING_RESPONSES, FakeChatModel
 from tests.paths import JD_DIR
 

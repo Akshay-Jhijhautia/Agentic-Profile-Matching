@@ -22,11 +22,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from profile_matching import llm, providers
-from profile_matching.config import get_settings
-from profile_matching.rag import skills_vocab
-from profile_matching.requirements import extract_requirements, load_job_description, open_questions
-from profile_matching.schemas import Requirements
+from resume_shortlister import llm, providers
+from resume_shortlister.config import get_settings
+from resume_shortlister.rag import skills_vocab
+from resume_shortlister.requirements import extract_requirements, load_job_description, open_questions
+from resume_shortlister.schemas import Requirements
 
 JD_DIR = Path("tests/fixtures/job_descriptions")
 REQUESTS = (

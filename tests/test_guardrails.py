@@ -1,8 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from profile_matching import guardrails, llm, prompts, screening
-from profile_matching.schemas import (
+from resume_shortlister import guardrails, llm, prompts, screening
+from resume_shortlister.schemas import (
     DeepReview,
     MustHaveCheck,
     Recommendation,

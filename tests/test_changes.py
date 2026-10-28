@@ -1,7 +1,7 @@
 import pytest
 
-from profile_matching import changes, reports
-from profile_matching.schemas import CandidateMatch, Requirements, ScoreBreakdown
+from resume_shortlister import changes, reports
+from resume_shortlister.schemas import CandidateMatch, Requirements, ScoreBreakdown
 from tests.fakes import fake_assessment
 
 

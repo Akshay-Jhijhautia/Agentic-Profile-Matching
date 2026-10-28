@@ -77,7 +77,7 @@ class VectorStore:
             self._db.execute("PRAGMA journal_mode=WAL")
             version = self._db.execute("PRAGMA user_version").fetchone()[0]
             if version > SCHEMA_VERSION:
-                raise ValueError(f"{self.path} was written by a newer profile-match; upgrade to use it.")
+                raise ValueError(f"{self.path} was written by a newer resume-shortlister; upgrade to use it.")
             self._db.executescript(_SCHEMA)
             self._db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 

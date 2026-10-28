@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from profile_matching.rag import resume_rag
+from resume_shortlister.rag import resume_rag
 from tests.paths import RESUMES_DIR
 
 

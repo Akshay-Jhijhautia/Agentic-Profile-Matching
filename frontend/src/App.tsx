@@ -69,7 +69,7 @@ export function App() {
         </div>
       </main>
       <footer>
-        Profile Match {status?.version} · runs on this computer · recommendations are a starting point; people make the
+        Resume Shortlister {status?.version} · runs on this computer · recommendations are a starting point; people make the
         hiring decisions
       </footer>
     </>

@@ -4,8 +4,8 @@ import json
 import pytest
 
 import matching_agent
-from profile_matching import changes, guardrails, screening
-from profile_matching.schemas import (
+from resume_shortlister import changes, guardrails, screening
+from resume_shortlister.schemas import (
     DEEP_WEIGHT,
     DecisionRationale,
     DeepReview,

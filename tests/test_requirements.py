@@ -3,15 +3,15 @@ import typing
 import pytest
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from profile_matching import prompts
-from profile_matching.rag import job_matcher, resume_rag, skills_vocab
-from profile_matching.requirements import (
+from resume_shortlister import prompts
+from resume_shortlister.rag import job_matcher, resume_rag, skills_vocab
+from resume_shortlister.requirements import (
     alternative_skills,
     degree_required,
     extract_requirements,
     open_questions,
 )
-from profile_matching.schemas import DegreeLevel, Requirements
+from resume_shortlister.schemas import DegreeLevel, Requirements
 from tests.fakes import FakeChatModel
 from tests.paths import JD_DIR
 

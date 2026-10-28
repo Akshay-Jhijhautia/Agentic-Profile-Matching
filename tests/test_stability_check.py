@@ -1,6 +1,6 @@
 import pytest
 
-from profile_matching import screening
+from resume_shortlister import screening
 from scripts.stability_check import kendall_tau, summarise
 from tests.test_explainability import ROLE, full_record
 

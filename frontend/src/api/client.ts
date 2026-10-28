@@ -9,14 +9,14 @@ export type CandidateRow = Schemas["CandidateRow"];
 export type SessionSummary = Schemas["SessionSummary"];
 export type CandidateReport = Schemas["CandidateReport"];
 
-/** What the agent does during a turn (profile_matching/conversation.py: Event). */
+/** What the agent does during a turn (resume_shortlister/conversation.py: Event). */
 export interface AgentEvent {
   kind: "note" | "message" | "report" | "candidate_report" | "tool_failed" | "error";
   text: string;
   node: string;
 }
 
-export const TOKEN_HEADER = "X-Profile-Match-Token";
+export const TOKEN_HEADER = "X-Resume-Shortlister-Token";
 
 export class ApiError extends Error {
   constructor(
@@ -29,7 +29,7 @@ export class ApiError extends Error {
 
 /** The token the server wrote into the page; every API call carries it. */
 export function pageToken(doc: Document = document): string {
-  return doc.querySelector<HTMLMetaElement>('meta[name="profile-match-token"]')?.content ?? "";
+  return doc.querySelector<HTMLMetaElement>('meta[name="resume-shortlister-token"]')?.content ?? "";
 }
 
 function withToken(init: RequestInit = {}): RequestInit {
@@ -99,7 +99,7 @@ export const api = {
     const response = await fetch(`/api/sessions/${encodeURIComponent(id)}/report`, withToken());
     if (!response.ok) throw await failure(response);
     const url = URL.createObjectURL(await response.blob());
-    const link = Object.assign(document.createElement("a"), { href: url, download: `profile-match-${id}.md` });
+    const link = Object.assign(document.createElement("a"), { href: url, download: `resume-shortlister-${id}.md` });
     link.click();
     URL.revokeObjectURL(url);
   },

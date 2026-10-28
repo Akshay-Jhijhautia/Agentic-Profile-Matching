@@ -1,6 +1,6 @@
 # Security policy
 
-Profile Match handles candidate data (resumes, contact details) and feeds
+Resume Shortlister handles candidate data (resumes, contact details) and feeds
 untrusted text to a language model, so security reports are welcome.
 
 ## Supported versions
@@ -29,7 +29,7 @@ Reports are especially useful about:
   prompt-injection risk.
 - **Candidate data leaving the machine** other than the resume text sent to
   the configured chat model, or being written somewhere other than the data
-  home (`~/.profile-match`) and the reports directory.
+  home (`~/.resume-shortlister`) and the reports directory.
 - **File access outside its limits**: the agent's `write_file` tool reaching
   outside the reports directory, or file tools reading through crafted paths.
 - **Keys** (API keys) appearing in logs, reports, stored answers or errors.

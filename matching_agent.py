@@ -1,10 +1,10 @@
 """The matching agent: a LangGraph agent that screens resumes for a job.
 
-The graph is built in ``profile_matching/agent/graph.py`` (see its docstring
+The graph is built in ``resume_shortlister/agent/graph.py`` (see its docstring
 for the full flow) and re-exported here; the command line lives in
-``profile_matching/app.py`` and is installed as ``profile-match``.
+``resume_shortlister/app.py`` and is installed as ``resume-shortlister``.
 
-    python matching_agent.py                                       chat (same as: profile-match chat)
+    python matching_agent.py                                       chat (same as: resume-shortlister chat)
     python matching_agent.py --jd-file job.pdf --resumes ~/cvs/     one-shot screening
 """
 
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import sys
 
-from profile_matching.agent.graph import (
+from resume_shortlister.agent.graph import (
     ASSESS,
     AWAIT,
     EXPLAIN,
@@ -23,8 +23,8 @@ from profile_matching.agent.graph import (
     build_graph,
     screen,
 )
-from profile_matching.app import agent_main as main
-from profile_matching.services import Services
+from resume_shortlister.app import agent_main as main
+from resume_shortlister.services import Services
 
 __all__ = [
     "ASSESS", "AWAIT", "EXPLAIN", "FINALIZE", "IMPROVE", "PIPELINE", "REPORT",

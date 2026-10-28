@@ -9,7 +9,7 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel
 
-from profile_matching.schemas import (
+from resume_shortlister.schemas import (
     Assessment,
     CandidateImprovements,
     DecisionRationale,

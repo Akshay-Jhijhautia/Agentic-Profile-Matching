@@ -10,11 +10,11 @@ import pytest
 from langchain_openai import ChatOpenAI
 
 import matching_agent
-from profile_matching import app, llm, providers
-from profile_matching.config import Settings
-from profile_matching.llm_cache import ResponseCache
-from profile_matching.schemas import DeepReview, Requirements, SkillRequirement
-from profile_matching.services import Services
+from resume_shortlister import app, llm, providers
+from resume_shortlister.config import Settings
+from resume_shortlister.llm_cache import ResponseCache
+from resume_shortlister.schemas import DeepReview, Requirements, SkillRequirement
+from resume_shortlister.services import Services
 from tests.fakes import SCREENING_RESPONSES, FakeChatModel, fake_review
 from tests.test_agent_pipeline import PYTHON_ROLE
 
@@ -155,7 +155,7 @@ def test_without_the_cache_the_model_is_asked_every_time(services):
 
 
 def test_the_cache_is_on_unless_turned_off(clean_env, tmp_path):
-    clean_env.setenv("PROFILE_MATCH_HOME", str(tmp_path))
+    clean_env.setenv("RESUME_SHORTLISTER_HOME", str(tmp_path))
     services = Services.from_settings(Settings.from_env())
     assert services.llm_cache.path == tmp_path / "llm_cache.sqlite"
     clean_env.setenv("LLM_CACHE", "false")
@@ -173,7 +173,7 @@ def test_cache_command_shows_and_clears(cache, monkeypatch, capsys):
 
 
 def test_clean_removes_answers_no_screening_used_for_a_while(cache, tmp_path):
-    from profile_matching import maintenance
+    from resume_shortlister import maintenance
     llm.structured(SkillRequirement, "s", "u", model=FakeChatModel({SkillRequirement: ANSWER}), cache=cache)
     settings = Settings(llm_cache_db=str(cache.path), uploads_dir=str(tmp_path / "u"), db_dir=str(tmp_path / "i"),
                         sessions_db=str(tmp_path / "s.sqlite"))

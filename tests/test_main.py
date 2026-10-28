@@ -3,9 +3,9 @@ import shutil
 import pytest
 
 import main
-from profile_matching import config
-from profile_matching.schemas import Requirements
-from profile_matching.services import Services
+from resume_shortlister import config
+from resume_shortlister.schemas import Requirements
+from resume_shortlister.services import Services
 from tests.fakes import SCREENING_RESPONSES, FakeChatModel
 from tests.paths import RESUMES_DIR
 
@@ -60,7 +60,7 @@ def test_screen_needs_a_job_description_and_chat_refuses_one(offline_env, folder
 
 def test_help_and_unknown_command(capsys):
     assert main.main(["--help"]) == 0
-    assert "profile-match screen" in capsys.readouterr().out
+    assert "resume-shortlister screen" in capsys.readouterr().out
     assert main.main([]) == 1
     assert main.main(["deploy"]) == 2
     assert "Unknown command" in capsys.readouterr().err

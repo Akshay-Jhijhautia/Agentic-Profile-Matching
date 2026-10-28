@@ -10,11 +10,11 @@ import openai
 import pytest
 from fastapi.testclient import TestClient
 
-from profile_matching import app as cli_app
-from profile_matching.pools import ResumePool
-from profile_matching.schemas import IntentDecision, Requirements
-from profile_matching.services import Services
-from profile_matching.web.app import TOKEN_HEADER, create_app
+from resume_shortlister import app as cli_app
+from resume_shortlister.pools import ResumePool
+from resume_shortlister.schemas import IntentDecision, Requirements
+from resume_shortlister.services import Services
+from resume_shortlister.web.app import TOKEN_HEADER, create_app
 from tests.fakes import SCREENING_RESPONSES, FakeChatModel
 from tests.paths import RESUMES_DIR
 from tests.test_confirmation import IOS_JD, IOS_ROLE
@@ -188,7 +188,7 @@ def test_a_failed_turn_is_an_event_and_the_session_goes_on(client):
 
 
 def test_progress_notes_name_the_candidate():
-    from profile_matching.conversation import describe
+    from resume_shortlister.conversation import describe
     from tests.fakes import fake_assessment
     (note,) = describe("assess_candidate", {"assessments": {"pool-1:3f2a:alex_lee": fake_assessment(91)}})
     assert note.text == "Deep analysis of alex_lee: 91"
@@ -203,11 +203,11 @@ def test_sessions_can_be_deleted(client):
 
 
 def test_web_command_starts_the_server(monkeypatch):
-    from profile_matching.web import app as web_app
+    from resume_shortlister.web import app as web_app
     calls = []
     monkeypatch.setattr(web_app, "serve", lambda port, open_browser, host: calls.append((port, open_browser, host)))
-    monkeypatch.delenv("PROFILE_MATCH_WEB_HOST", raising=False)
+    monkeypatch.delenv("RESUME_SHORTLISTER_WEB_HOST", raising=False)
     assert cli_app.main(["web", "--port", "9001", "--no-browser"]) == 0
-    monkeypatch.setenv("PROFILE_MATCH_WEB_HOST", "0.0.0.0")  # as the Docker image sets it
+    monkeypatch.setenv("RESUME_SHORTLISTER_WEB_HOST", "0.0.0.0")  # as the Docker image sets it
     assert cli_app.main(["web"]) == 0
     assert calls == [(9001, False, "127.0.0.1"), (8765, True, "0.0.0.0")]

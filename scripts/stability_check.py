@@ -22,8 +22,8 @@ from statistics import mean
 from dotenv import load_dotenv
 
 import matching_agent
-from profile_matching import llm, providers
-from profile_matching.services import Services
+from resume_shortlister import llm, providers
+from resume_shortlister.services import Services
 
 
 def kendall_tau(first: list[str], second: list[str]) -> float:

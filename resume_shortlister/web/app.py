@@ -14,7 +14,6 @@ open in the browser cannot drive the API.
 from __future__ import annotations
 
 import json
-import os
 import secrets
 import shlex
 import shutil
@@ -29,6 +28,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Str
 from fastapi.staticfiles import StaticFiles
 
 from .. import __version__, analysis
+from ..config import tool_env
 from ..services import Services
 from .models import (
     CandidateReport,
@@ -41,25 +41,25 @@ from .models import (
 )
 from .workspace import OpenSession, Workspace
 
-TOKEN_HEADER = "X-Profile-Match-Token"
+TOKEN_HEADER = "X-Resume-Shortlister-Token"
 LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost"})
 DEFAULT_PORT = 8765
 # The address to listen on. Only inside a container is it 0.0.0.0 (the Docker image sets
-# PROFILE_MATCH_WEB_HOST), with the port published on the host's 127.0.0.1.
+# RESUME_SHORTLISTER_WEB_HOST), with the port published on the host's 127.0.0.1.
 DEFAULT_HOST = "127.0.0.1"
 # Longest message accepted (a long job description fits easily).
 MAX_TEXT_CHARS = 50_000
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # per resume file
 # The browser app, built from frontend/ (``npm run build``); its page carries this placeholder.
 STATIC_DIR = Path(__file__).parent / "static"
-TOKEN_PLACEHOLDER = "__PROFILE_MATCH_TOKEN__"
+TOKEN_PLACEHOLDER = "__RESUME_SHORTLISTER_TOKEN__"
 
 _MISSING_UI_PAGE = """<!doctype html>
-<html><head><meta charset="utf-8"><title>Profile Match</title></head>
+<html><head><meta charset="utf-8"><title>Resume Shortlister</title></head>
 <body style="font-family: sans-serif; margin: 3rem;">
-<h1>Profile Match {version}</h1>
+<h1>Resume Shortlister {version}</h1>
 <p>The browser interface is missing from this installation (build it with <code>npm run build</code>
-in <code>frontend/</code>). The terminal chat works: <code>profile-match chat</code>.</p>
+in <code>frontend/</code>). The terminal chat works: <code>resume-shortlister chat</code>.</p>
 </body></html>"""
 
 
@@ -73,18 +73,18 @@ def create_app(
     allowed_hosts: frozenset[str] = LOCAL_HOSTS,
 ) -> FastAPI:
     """The app; ``token`` None generates one (``app.state.token``)."""
-    app = FastAPI(title="Profile Match", version=__version__, docs_url=None, redoc_url=None)
+    app = FastAPI(title="Resume Shortlister", version=__version__, docs_url=None, redoc_url=None)
     app.state.token = token or secrets.token_urlsafe(32)
     workspace = app.state.workspace = Workspace(make_services)
 
     @app.middleware("http")
     async def local_only(request: Request, call_next):
         if request.url.hostname not in allowed_hosts:
-            return JSONResponse({"detail": "Profile Match only answers on this machine."}, status_code=403)
+            return JSONResponse({"detail": "Resume Shortlister only answers on this machine."}, status_code=403)
         if request.url.path.startswith("/api/") and not secrets.compare_digest(
             request.headers.get(TOKEN_HEADER, ""), app.state.token
         ):
-            return JSONResponse({"detail": "Missing or wrong token: open Profile Match from its own page."},
+            return JSONResponse({"detail": "Missing or wrong token: open Resume Shortlister from its own page."},
                                 status_code=403)
         return await call_next(request)
 
@@ -238,18 +238,18 @@ def serve(port: int = DEFAULT_PORT, open_browser: bool = True, host: str = DEFAU
     """Run the app on ``host``:``port`` until interrupted, opening it in the browser.
 
     Requests are answered only when addressed to 127.0.0.1 or localhost, whatever
-    ``host`` listens on. ``PROFILE_MATCH_TOKEN`` fixes the token instead of
+    ``host`` listens on. ``RESUME_SHORTLISTER_TOKEN`` fixes the token instead of
     generating one: for UI development, where the Vite dev server sends it (see
     frontend/README.md).
     """
     import uvicorn
 
-    app = create_app(token=os.getenv("PROFILE_MATCH_TOKEN") or None)
+    app = create_app(token=tool_env("TOKEN"))
     url = f"http://127.0.0.1:{port}/"
     if host == DEFAULT_HOST:
-        print(f"Profile Match is running at {url} (Ctrl-C to stop).")
+        print(f"Resume Shortlister is running at {url} (Ctrl-C to stop).")
         if open_browser:
             threading.Timer(1.0, webbrowser.open, args=(url,)).start()
     else:  # in a container: the browser is on the host, at the port Docker published
-        print(f"Profile Match is listening on {host}:{port}. Open http://127.0.0.1:<published port>/ (Ctrl-C to stop).")
+        print(f"Resume Shortlister is listening on {host}:{port}. Open http://127.0.0.1:<published port>/ (Ctrl-C to stop).")
     uvicorn.run(app, host=host, port=port, log_level="warning")

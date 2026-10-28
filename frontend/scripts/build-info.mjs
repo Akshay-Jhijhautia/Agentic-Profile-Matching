@@ -1,5 +1,5 @@
 // Records a fingerprint of the UI's source next to the build, so a Python test can tell
-// when the committed build (profile_matching/web/static/) is older than the source.
+// when the committed build (resume_shortlister/web/static/) is older than the source.
 // The same fingerprint is computed in tests/test_web_ui.py: keep the two in step.
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -23,6 +23,6 @@ for (const path of all) {
   hash.update(readFileSync(join(root, path)));
   hash.update("\0");
 }
-const out = join(root, "..", "profile_matching", "web", "static", "build-info.json");
+const out = join(root, "..", "resume_shortlister", "web", "static", "build-info.json");
 writeFileSync(out, JSON.stringify({ source_hash: hash.digest("hex"), files: all.length }, null, 2) + "\n");
 console.log(`Fingerprinted ${all.length} source files into ${relative(join(root, ".."), out)}`);

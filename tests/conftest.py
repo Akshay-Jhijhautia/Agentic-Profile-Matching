@@ -1,17 +1,17 @@
 import pytest
 
-from profile_matching import config
-from profile_matching.config import Settings
-from profile_matching.rag import job_matcher, resume_rag
-from profile_matching.pools import ResumePool
-from profile_matching.services import Services
+from resume_shortlister import config
+from resume_shortlister.config import Settings
+from resume_shortlister.rag import job_matcher, resume_rag
+from resume_shortlister.pools import ResumePool
+from resume_shortlister.services import Services
 from tests.paths import RESUMES_DIR
 
 
 @pytest.fixture(autouse=True)
 def isolated_home(monkeypatch, tmp_path):
-    """Settings read from the environment use a temporary data home, never ~/.profile-match."""
-    monkeypatch.setenv("PROFILE_MATCH_HOME", str(tmp_path / "profile-match-home"))
+    """Settings read from the environment use a temporary data home, never ~/.resume-shortlister."""
+    monkeypatch.setenv("RESUME_SHORTLISTER_HOME", str(tmp_path / "resume-shortlister-home"))
     config.get_settings.cache_clear()
     yield
     config.get_settings.cache_clear()
@@ -61,7 +61,7 @@ def services(fixture_pool_db, tmp_path) -> Services:
 # Settings read from the environment; cleared so a developer's .env cannot leak into tests.
 ENV_VARS = ("OPENAI_MODEL", "OPENAI_TEMPERATURE", "OPENAI_TIMEOUT", "OPENAI_MAX_RETRIES", "CHROMA_DB_DIR", "INDEX_DIR",
             "REPORTS_DIR", "SHORTLIST_SIZE", "SCREENING_ROUNDS", "SAVE_REPORTS", "OPENAI_RESPONSES_API",
-            "UPLOADS_DIR", "EMBEDDER", "PROFILE_MATCH_HOME", "SESSIONS_DB", "LLM_PROVIDER", "LLM_MODEL",
+            "UPLOADS_DIR", "EMBEDDER", "RESUME_SHORTLISTER_HOME", "PROFILE_MATCH_HOME", "SESSIONS_DB", "LLM_PROVIDER", "LLM_MODEL",
             "LLM_TEMPERATURE", "LLM_TIMEOUT", "LLM_MAX_RETRIES", "LLM_BASE_URL", "LLM_API_KEY")
 
 

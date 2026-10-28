@@ -4,7 +4,7 @@ export function Header({ status }: { status: Status | null }) {
   return (
     <header className="topbar">
       <div className="brand">
-        Profile <span>Match</span>
+        Resume <span>Shortlister</span>
       </div>
       <div className="tagline">Explainable resume screening · it ranks and explains, the recruiter decides</div>
       {status && (

@@ -1,9 +1,9 @@
 import pytest
 from langchain_openai import ChatOpenAI
 
-from profile_matching import llm
-from profile_matching.config import Settings
-from profile_matching.schemas import SkillRequirement
+from resume_shortlister import llm
+from resume_shortlister.config import Settings
+from resume_shortlister.schemas import SkillRequirement
 from tests.fakes import FakeChatModel
 
 
@@ -42,7 +42,7 @@ def test_settings_are_validated(field, value):
 
 
 def test_data_home_holds_index_uploads_and_sessions(clean_env, tmp_path):
-    clean_env.setenv("PROFILE_MATCH_HOME", str(tmp_path / "pm"))
+    clean_env.setenv("RESUME_SHORTLISTER_HOME", str(tmp_path / "pm"))
     settings = Settings.from_env()
     assert (settings.db_dir, settings.uploads_dir, settings.sessions_db) == (
         str(tmp_path / "pm" / "index"), str(tmp_path / "pm" / "uploads"), str(tmp_path / "pm" / "sessions.sqlite"),

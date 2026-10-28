@@ -2,7 +2,7 @@ from collections import Counter
 
 import pytest
 
-from profile_matching.rag import resume_rag
+from resume_shortlister.rag import resume_rag
 from scripts import generate_sample_resumes as generator
 from scripts import synthetic_resumes
 

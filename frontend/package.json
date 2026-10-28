@@ -1,8 +1,8 @@
 {
-  "name": "profile-match-ui",
+  "name": "resume-shortlister-ui",
   "private": true,
   "type": "module",
-  "description": "The browser interface of Profile Match, built into profile_matching/web/static/",
+  "description": "The browser interface of Resume Shortlister, built into resume_shortlister/web/static/",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build && node scripts/build-info.mjs",

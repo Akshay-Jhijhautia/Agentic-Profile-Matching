@@ -14,7 +14,7 @@ function streamOf(text: string): Response {
 }
 
 beforeEach(() => {
-  document.head.innerHTML = '<meta name="profile-match-token" content="secret">';
+  document.head.innerHTML = '<meta name="resume-shortlister-token" content="secret">';
 });
 
 test("the page token is read from the meta tag and sent with every call", async () => {

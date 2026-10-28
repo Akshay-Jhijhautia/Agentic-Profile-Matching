@@ -3,17 +3,17 @@ from pathlib import Path
 
 import pytest
 
-from profile_matching import analysis, screening
-from profile_matching.requirements import load_job_description
-from profile_matching.schemas import (
+from resume_shortlister import analysis, screening
+from resume_shortlister.requirements import load_job_description
+from resume_shortlister.schemas import (
     CandidateNote,
     ComparisonVerdict,
     InterviewQuestion,
     InterviewQuestions,
     Requirements,
 )
-from profile_matching.tools import make_tools
-from profile_matching.tools._base import MAX_TOOL_TEXT_CHARS, safe_tool
+from resume_shortlister.tools import make_tools
+from resume_shortlister.tools._base import MAX_TOOL_TEXT_CHARS, safe_tool
 from tests.fakes import FakeChatModel, fake_assessment
 from tests.paths import JD_DIR, RESUMES_DIR
 

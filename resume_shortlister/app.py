@@ -1,32 +1,32 @@
-"""The ``profile-match`` command line.
+"""The ``resume-shortlister`` command line.
 
-    profile-match chat     [--resumes PATH ...] [--session ID]    chat with the agent
-    profile-match screen   "request" | --jd-file JD --resumes PATH ...   one-shot screening
-    profile-match index    FOLDER [--embedder local|openai|hashing]  index or refresh a resume folder
-    profile-match list     FOLDER                                 candidates indexed from a folder
-    profile-match sessions [--delete ID]                          saved chat sessions
-    profile-match clean    [--older-than DAYS] [--yes]            remove old uploads, indexes, sessions, answers
-    profile-match cache    [--clear]                              stored model answers (reproducible runs)
-    profile-match web      [--port PORT] [--no-browser] [--host]  the app in your browser (this machine only)
-    profile-match --version
+    resume-shortlister chat     [--resumes PATH ...] [--session ID]    chat with the agent
+    resume-shortlister screen   "request" | --jd-file JD --resumes PATH ...   one-shot screening
+    resume-shortlister index    FOLDER [--embedder local|openai|hashing]  index or refresh a resume folder
+    resume-shortlister list     FOLDER                                 candidates indexed from a folder
+    resume-shortlister sessions [--delete ID]                          saved chat sessions
+    resume-shortlister clean    [--older-than DAYS] [--yes]            remove old uploads, indexes, sessions, answers
+    resume-shortlister cache    [--clear]                              stored model answers (reproducible runs)
+    resume-shortlister web      [--port PORT] [--no-browser] [--host]  the app in your browser (this machine only)
+    resume-shortlister --version
 
 PATH is a folder of resumes or one or more resume files (files are copied
-into UPLOADS_DIR). Local data lives in PROFILE_MATCH_HOME (~/.profile-match).
+into UPLOADS_DIR). Local data lives in RESUME_SHORTLISTER_HOME (~/.resume-shortlister).
 Add ``--help`` after a command to see its options.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 
 from . import __version__, cli, maintenance, pools, providers, sessions
 from .agent.graph import build_graph, screen
 from .conversation import reload_resumes
-from .config import get_settings
+from .config import get_settings, tool_env
 from .llm_cache import ResponseCache
 from .rag import resume_rag
 from .services import Services
@@ -36,7 +36,7 @@ DEFAULT_CLEAN_DAYS = 30
 
 def _version() -> str:
     try:
-        return version("profile-match")
+        return version("resume-shortlister")
     except PackageNotFoundError:  # running from a source checkout
         return __version__
 
@@ -45,7 +45,7 @@ def _version() -> str:
 
 
 def _parser(prog: str, description: str) -> argparse.ArgumentParser:
-    return argparse.ArgumentParser(prog=f"profile-match {prog}", description=description)
+    return argparse.ArgumentParser(prog=f"resume-shortlister {prog}", description=description)
 
 
 def _resumes_option(parser: argparse.ArgumentParser) -> None:
@@ -59,7 +59,7 @@ def run_agent(argv: list[str] | None = None, mode: str = "auto") -> int:
     source = parser.add_mutually_exclusive_group()
     source.add_argument("jd", nargs="?", help="Job description text or a short request.")
     source.add_argument("--jd-file", help="Job description file (TXT, MD, PDF or DOCX).")
-    parser.add_argument("--session", help="Resume a saved chat session (see: profile-match sessions).")
+    parser.add_argument("--session", help="Resume a saved chat session (see: resume-shortlister sessions).")
     _resumes_option(parser)
     args = parser.parse_args(argv)
     job_description = args.jd_file or args.jd
@@ -90,7 +90,7 @@ def _chat(services: Services, paths: list[str] | None, session_id: str | None) -
     report, initial = None, {}
     if session_id:
         if not sessions.exists(saver, session_id):
-            raise ValueError(f"No saved session '{session_id}'. See: profile-match sessions")
+            raise ValueError(f"No saved session '{session_id}'. See: resume-shortlister sessions")
         report, problem = reload_resumes(services, graph.get_state(sessions.config_for(session_id)).values)
         if report or problem:
             print(report.summary() if report else problem, file=sys.stderr)
@@ -154,11 +154,11 @@ def list_sessions(argv: list[str]) -> int:
         return 0
     found = sessions.list_sessions(build_graph(services, checkpointer=saver, conversational=True), saver)
     if not found:
-        print("No saved sessions yet. Start one with: profile-match chat")
+        print("No saved sessions yet. Start one with: resume-shortlister chat")
     for info in found:
         print(info.line())
     if found:
-        print("\nResume one with: profile-match chat --session <ID>")
+        print("\nResume one with: resume-shortlister chat --session <ID>")
     return 0
 
 
@@ -204,10 +204,10 @@ def cache(argv: list[str]) -> int:
 def web(argv: list[str]) -> int:
     from .web.app import DEFAULT_HOST, DEFAULT_PORT, serve
 
-    parser = _parser("web", "Open Profile Match in your browser. It runs on this machine only.")
+    parser = _parser("web", "Open Resume Shortlister in your browser. It runs on this machine only.")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Port to listen on (default: {DEFAULT_PORT}).")
     parser.add_argument("--no-browser", action="store_true", help="Do not open the browser.")
-    parser.add_argument("--host", default=os.getenv("PROFILE_MATCH_WEB_HOST") or DEFAULT_HOST,
+    parser.add_argument("--host", default=tool_env("WEB_HOST") or DEFAULT_HOST,
                         help="Address to listen on (default: 127.0.0.1). Use 0.0.0.0 only inside a container.")
     args = parser.parse_args(argv)
     serve(args.port, open_browser=not args.no_browser, host=args.host)
@@ -229,13 +229,20 @@ COMMANDS: dict[str, Callable[[list[str]], int]] = {
 }
 
 
+# The command's name before 1.2; it still works, for now.
+LEGACY_COMMAND = "profile-match"
+
+
 def main(argv: list[str] | None = None) -> int:
+    if argv is None and Path(sys.argv[0]).name == LEGACY_COMMAND:
+        print(f"Note: {LEGACY_COMMAND} is now resume-shortlister; the old name will be removed in a later version.",
+              file=sys.stderr)
     argv = sys.argv[1:] if argv is None else argv
     if not argv or argv[0] in {"-h", "--help"}:
         print(__doc__.strip())
         return 0 if argv else 1
     if argv[0] in {"-V", "--version"}:
-        print(f"profile-match {_version()}")
+        print(f"resume-shortlister {_version()}")
         return 0
     command, rest = argv[0], argv[1:]
     handler = COMMANDS.get(command)

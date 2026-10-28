@@ -1,7 +1,7 @@
 """Runtime settings, read once from the environment and ``.env`` files.
 
 Local data (folder indexes, uploaded resumes, saved sessions) lives under one
-data home, ``~/.profile-match`` unless ``PROFILE_MATCH_HOME`` says otherwise,
+data home, ``~/.resume-shortlister`` unless ``RESUME_SHORTLISTER_HOME`` says otherwise,
 so the tool works the same from any directory. ``.env`` is read from the
 current directory and from the data home, in that order of precedence.
 
@@ -10,6 +10,11 @@ The chat model comes from ``LLM_PROVIDER`` and ``LLM_MODEL`` (see
 ``OPENAI_TIMEOUT`` and ``OPENAI_MAX_RETRIES`` still configure the OpenAI
 provider when the ``LLM_`` names are unset, and ``CHROMA_DB_DIR`` still sets
 the index folder (now ``INDEX_DIR``).
+
+Before 1.2 the tool was called Profile Match: its ``PROFILE_MATCH_*`` settings
+and its data home ``~/.profile-match`` still work (see ``tool_env`` and
+``default_home``). The data home is used where it is, never moved: saved
+sessions and indexes record paths inside it.
 """
 
 from __future__ import annotations
@@ -23,12 +28,26 @@ from dotenv import find_dotenv, load_dotenv
 
 from . import providers
 
-DEFAULT_HOME = Path.home() / ".profile-match"
+def default_home(user_home: Path | None = None) -> Path:
+    """``~/.resume-shortlister``, or the data home from before the rename
+    (``~/.profile-match``) when only that one exists."""
+    user_home = user_home or Path.home()
+    current, legacy = user_home / ".resume-shortlister", user_home / ".profile-match"
+    return legacy if legacy.is_dir() and not current.exists() else current
+
+
+DEFAULT_HOME = default_home()
 
 
 def _env(*names: str | None) -> str | None:
     """The first of ``names`` set to a non-empty value."""
     return next((os.environ[name] for name in names if name and os.getenv(name)), None)
+
+
+def tool_env(name: str) -> str | None:
+    """The ``RESUME_SHORTLISTER_<name>`` setting, or its name from before the rename
+    (``PROFILE_MATCH_<name>``)."""
+    return _env(f"RESUME_SHORTLISTER_{name}", f"PROFILE_MATCH_{name}")
 
 
 def _optional_float(*names: str | None) -> float | None:
@@ -83,7 +102,7 @@ class Settings:
     @classmethod
     def from_env(cls) -> Settings:
         defaults = cls()
-        home = Path(os.getenv("PROFILE_MATCH_HOME") or defaults.home).expanduser()
+        home = Path(tool_env("HOME") or defaults.home).expanduser()
         provider = (os.getenv("LLM_PROVIDER") or defaults.llm_provider).strip().lower()
         # The older OPENAI_ names configure only the OpenAI provider.
         legacy = "OPENAI_{}".format if provider == "openai" else lambda _: None
@@ -137,7 +156,7 @@ class Settings:
 def load_env_files() -> None:
     """Load ``.env`` from the current directory, then from the data home (no overrides)."""
     load_dotenv(find_dotenv(usecwd=True))
-    home = Path(os.getenv("PROFILE_MATCH_HOME") or DEFAULT_HOME).expanduser()
+    home = Path(tool_env("HOME") or DEFAULT_HOME).expanduser()
     load_dotenv(home / ".env")
 
 

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from profile_matching.rag import job_matcher
+from resume_shortlister.rag import job_matcher
 from tests.paths import JD_DIR, RESUMES_DIR
 
 MATCH_KEYS = {

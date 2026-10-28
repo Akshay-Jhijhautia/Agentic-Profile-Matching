@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from profile_matching.rag import resume_rag
+from resume_shortlister.rag import resume_rag
 from tests.paths import RESUMES_DIR
 
 SAMPLES = ["resume_john_doe.pdf", "resume_jane_smith.docx", "resume_alex_lee.txt"]

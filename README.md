@@ -1,4 +1,4 @@
-# Profile Match
+# Resume Shortlister
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
@@ -7,8 +7,11 @@
 **An open-source, explainable resume-screening assistant. It ranks and
 explains; the recruiter decides.**
 
+*Formerly Profile Match: the old command, settings and data folder still work
+(see the [changelog](CHANGELOG.md)).*
+
 Point it at a folder of resumes and describe the role, in one sentence or a
-full job description. Profile Match screens every resume in three rounds,
+full job description. Resume Shortlister screens every resume in three rounds,
 recommends whom to interview, and shows the evidence behind every score. Then
 refine the search by talking to it:
 
@@ -51,15 +54,15 @@ Google Gemini, a local Ollama server or any OpenAI-compatible server (see
 locally; the first index downloads the model once (180 MB).
 
 ```bash
-pip install "profile-match @ git+https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching.git"
-export OPENAI_API_KEY=sk-...        # or put it in ./.env or ~/.profile-match/.env
+pip install "resume-shortlister @ git+https://github.com/Akshay-Jhijhautia/resume-shortlister.git"
+export OPENAI_API_KEY=sk-...        # or put it in ./.env or ~/.resume-shortlister/.env
 ```
 
 To work on the code:
 
 ```bash
-git clone --depth 1 https://github.com/Akshay-Jhijhautia/Agentic-Profile-Matching.git
-cd Agentic-Profile-Matching
+git clone --depth 1 https://github.com/Akshay-Jhijhautia/resume-shortlister.git
+cd resume-shortlister
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt     # editable install with dev tools and every provider
 ```
@@ -70,17 +73,17 @@ Or run it in Docker (see [Docker](#docker)).
 
 ```bash
 # Chat: describe the role, then load resumes (or the other way round)
-profile-match chat
+resume-shortlister chat
 you> /resumes ~/Downloads/backend-applicants          # a folder: 5 or 500 resumes
 you> /add ~/Downloads/jane.pdf ~/Downloads/raj.docx   # or individual files (drag them in)
 
 # One-shot screening: the job description first, the resumes last
-profile-match screen --jd-file job.pdf --resumes ~/Downloads/backend-applicants
-profile-match screen "Senior React developer, 3+ years" --resumes jane.pdf raj.docx
+resume-shortlister screen --jd-file job.pdf --resumes ~/Downloads/backend-applicants
+resume-shortlister screen "Senior React developer, 3+ years" --resumes jane.pdf raj.docx
 
 # Pick up a conversation later
-profile-match sessions
-profile-match chat --session 20261022-1640-a3f2
+resume-shortlister sessions
+resume-shortlister chat --session 20261022-1640-a3f2
 ```
 
 Resumes can be PDF, DOCX, TXT or MD. Every
@@ -93,20 +96,20 @@ From a source checkout, `python main.py ...` runs the same commands.
 
 | Command | What it does |
 | --- | --- |
-| `profile-match chat [--resumes PATH ...] [--session ID]` | Chat with the agent; resume a saved session with `--session` |
-| `profile-match screen "request" \| --jd-file JD --resumes PATH ...` | One-shot screening; prints the report and saves all reports |
-| `profile-match index FOLDER [--embedder local\|openai\|hashing]` | Index or refresh a folder without screening |
-| `profile-match list FOLDER` | The candidates indexed from a folder |
-| `profile-match sessions [--delete ID]` | Saved chat sessions, newest first: id, date, role, resumes |
-| `profile-match clean [--older-than DAYS] [--yes]` | Old upload batches and sessions (default 30 days), stored model answers unused that long, indexes of deleted folders, and a ChromaDB index left by versions before 1.1; lists them, deletes with `--yes` |
-| `profile-match cache [--clear]` | Stored model answers (see [Reproducible results](#reproducible-results)); `--clear` deletes them |
-| `profile-match web [--port PORT] [--no-browser]` | The app in your browser, on this computer only (preview: screening; candidate details and chat in the browser are next) |
-| `profile-match --version` | The installed version |
+| `resume-shortlister chat [--resumes PATH ...] [--session ID]` | Chat with the agent; resume a saved session with `--session` |
+| `resume-shortlister screen "request" \| --jd-file JD --resumes PATH ...` | One-shot screening; prints the report and saves all reports |
+| `resume-shortlister index FOLDER [--embedder local\|openai\|hashing]` | Index or refresh a folder without screening |
+| `resume-shortlister list FOLDER` | The candidates indexed from a folder |
+| `resume-shortlister sessions [--delete ID]` | Saved chat sessions, newest first: id, date, role, resumes |
+| `resume-shortlister clean [--older-than DAYS] [--yes]` | Old upload batches and sessions (default 30 days), stored model answers unused that long, indexes of deleted folders, and a ChromaDB index left by versions before 1.1; lists them, deletes with `--yes` |
+| `resume-shortlister cache [--clear]` | Stored model answers (see [Reproducible results](#reproducible-results)); `--clear` deletes them |
+| `resume-shortlister web [--port PORT] [--no-browser]` | The app in your browser, on this computer only (preview: screening; candidate details and chat in the browser are next) |
+| `resume-shortlister --version` | The installed version |
 
 ### Local data
 
-Everything the tool keeps lives in one folder, `~/.profile-match`
-(`PROFILE_MATCH_HOME`):
+Everything the tool keeps lives in one folder, `~/.resume-shortlister`
+(`RESUME_SHORTLISTER_HOME`):
 
 | Path | Contents |
 | --- | --- |
@@ -117,16 +120,16 @@ Everything the tool keeps lives in one folder, `~/.profile-match`
 | `llm_cache.sqlite` | Stored model answers, so a repeated screening gives the same result |
 | `.env` | Optional settings, e.g. `OPENAI_API_KEY` |
 
-Every chat is saved as it goes. `profile-match chat --session <id>` restores
+Every chat is saved as it goes. `resume-shortlister chat --session <id>` restores
 it, with the role, results, history and resumes (reloaded from their folder).
 
 ## Docker
 
 ```bash
-docker build -t profile-match .
+docker build -t resume-shortlister .
 docker run --rm -it -e OPENAI_API_KEY \
-    -v ~/.profile-match:/data -v "$PWD":/work \
-    profile-match chat --resumes ./applicants
+    -v ~/.resume-shortlister:/data -v "$PWD":/work \
+    resume-shortlister chat --resumes ./applicants
 ```
 
 For the browser app, publish its port on this computer only and open
@@ -134,7 +137,7 @@ http://127.0.0.1:8765/:
 
 ```bash
 docker run --rm -e OPENAI_API_KEY -p 127.0.0.1:8765:8765 \
-    -v ~/.profile-match:/data -v "$PWD":/work profile-match web
+    -v ~/.resume-shortlister:/data -v "$PWD":/work resume-shortlister web
 ```
 
 The image runs as a non-root user and includes the embedding model, so indexing
@@ -157,7 +160,7 @@ before loading any, it notes the requirements and asks for resumes.
   folder works, and only its top level is read. Loading new resumes keeps the
   current role and re-screens against it.
 - **Uploaded files.** Files are copied into a batch under `UPLOADS_DIR`
-  (`~/.profile-match/uploads`); the originals are never touched. In chat, every
+  (`~/.resume-shortlister/uploads`); the originals are never touched. In chat, every
   `/add` joins the same batch, so they are screened together. A batch is its
   own pool; `/resumes <folder>` switches back to a folder.
 - **Automatic, incremental indexing.** New and changed files are indexed and
@@ -183,8 +186,8 @@ before loading any, it notes the requirements and asks for resumes.
   lower-priority sections are cut.
 
 ```bash
-profile-match index ~/Downloads/backend-applicants    # index or refresh a folder without screening
-profile-match list ~/Downloads/backend-applicants     # the candidates indexed from it
+resume-shortlister index ~/Downloads/backend-applicants    # index or refresh a folder without screening
+resume-shortlister list ~/Downloads/backend-applicants     # the candidates indexed from it
 ```
 
 ## Architecture
@@ -226,7 +229,7 @@ graph TD
     human_feedback --> route_intent
 ```
 
-The one-shot graph (`profile-match screen`) is the same pipeline from
+The one-shot graph (`resume-shortlister screen`) is the same pipeline from
 `parse_jd` to `generate_report`, ending there. Both come from
 `build_graph(services, conversational=...)`. A test keeps this diagram in sync
 with the compiled graph.
@@ -253,7 +256,7 @@ with the compiled graph.
 
 ### Agent state
 
-`AgentState` (`profile_matching/agent/state.py`) holds:
+`AgentState` (`resume_shortlister/agent/state.py`) holds:
 
 - **conversation history**: `messages`;
 - **job understanding**: `job_description`, the current `requirements` and every version in `requirements_history`;
@@ -317,7 +320,7 @@ the ML job description, the ML request and the iOS role were asked about in
 most runs. When the model reads a multi-skill line strictly (every skill a
 must-have) nothing is asked, since that can only knock candidates out, never
 let a weak one in.
-`profile-match screen` cannot ask: it screens as proposed and lists the open
+`resume-shortlister screen` cannot ask: it screens as proposed and lists the open
 points under **Please check** in the report.
 
 Skills are normalised through the shared vocabulary (`react.js` → `React`). A
@@ -340,7 +343,7 @@ A full three-round screen of 100 resumes takes about 40 seconds with
 
 The agent is designed so that **the model judges and code decides**. Results
 then depend as little as possible on which model is plugged in or on a given
-run (`profile_matching/guardrails.py`):
+run (`resume_shortlister/guardrails.py`):
 
 | Guardrail | What it prevents |
 | --- | --- |
@@ -396,7 +399,7 @@ question again returns the stored answer, so:
 - each entry keeps the request, the answer, the model, when it was made and how
   often it was reused: an audit trail of what the model was asked and said.
 
-`profile-match cache` shows what is stored, `profile-match cache --clear`
+`resume-shortlister cache` shows what is stored, `resume-shortlister cache --clear`
 forgets it, and `clean` removes answers unused for 30 days. `LLM_CACHE=false`
 asks the model every time; `scripts/stability_check.py` always does, since it
 measures the model's own variance. Free-form chat replies are not stored. The
@@ -407,7 +410,7 @@ cache holds resume text, like the index, and stays on your machine.
 "Make Kubernetes a must-have", "5+ years of React instead", "drop the degree
 requirement" or "TypeScript is only nice to have" edit the current
 requirements and re-rank every resume. `explain_changes`
-(`profile_matching/changes.py`) then computes, deterministically:
+(`resume_shortlister/changes.py`) then computes, deterministically:
 
 - **the requirement edits**, e.g. "React: 3+ yrs → 5+ yrs";
 - **every candidate who entered, left or moved**, with a reason, one of:
@@ -511,19 +514,19 @@ rationales, the assistant and the indexer's metadata fallback. Pick it with
 | `LLM_PROVIDER` | Install | Key | Default `LLM_MODEL` |
 | --- | --- | --- | --- |
 | `openai` (default) | included | `OPENAI_API_KEY` | `gpt-5.6-terra` |
-| `anthropic` | `pip install 'profile-match[anthropic]'` | `ANTHROPIC_API_KEY` | `claude-opus-5-5` |
-| `google` | `pip install 'profile-match[google]'` | `GOOGLE_API_KEY` or `GEMINI_API_KEY` | `gemini-3.1-pro` |
-| `ollama` | `pip install 'profile-match[ollama]'` | none | none: set it, e.g. `qwen3:32b` |
+| `anthropic` | `pip install 'resume-shortlister[anthropic]'` | `ANTHROPIC_API_KEY` | `claude-opus-5-5` |
+| `google` | `pip install 'resume-shortlister[google]'` | `GOOGLE_API_KEY` or `GEMINI_API_KEY` | `gemini-3.1-pro` |
+| `ollama` | `pip install 'resume-shortlister[ollama]'` | none | none: set it, e.g. `qwen3:32b` |
 
 Any OpenAI-compatible server (vLLM, LM Studio, OpenRouter, xAI, ...) works
 through `openai` with `LLM_BASE_URL`; put its key, if it needs one, in
 `LLM_API_KEY`, so your `OPENAI_API_KEY` is never sent to it:
 
 ```bash
-LLM_BASE_URL=http://localhost:8000/v1 LLM_MODEL=llama-3.3-70b profile-match chat
+LLM_BASE_URL=http://localhost:8000/v1 LLM_MODEL=llama-3.3-70b resume-shortlister chat
 ```
 
-Provider differences are handled in `profile_matching/providers.py`: Claude
+Provider differences are handled in `resume_shortlister/providers.py`: Claude
 gets no temperature and uses its native structured outputs, OpenAI's reasoning
 models use the Responses API, and errors name the provider and the setting to
 fix. Embeddings do not depend on the chat provider: they are computed locally
@@ -535,7 +538,7 @@ providers are covered by offline tests.
 
 Resumes and searches are embedded by an open-source model running on your
 machine: `ibm-granite/granite-embedding-small-english-r2` (Apache-2.0, 180 MB,
-downloaded once into `~/.profile-match/models`). No API key, nothing leaves the
+downloaded once into `~/.resume-shortlister/models`). No API key, nothing leaves the
 machine, and the same resumes get the same vectors on every run. Indexing 100
 resumes takes about 5 seconds on a laptop CPU.
 
@@ -575,54 +578,54 @@ other embeddings is re-indexed automatically the next time it is used.
 | `OPENAI_RESPONSES_API` | `true` (`false` with `LLM_BASE_URL`) | OpenAI's Responses API, required for tool calling with reasoning models |
 | `EMBEDDER` | `local` | Resume embeddings: `local`, `openai`, or `hashing` (keyword overlap only, for tests) |
 | `LOCAL_EMBEDDING_MODEL` | `ibm-granite/granite-embedding-small-english-r2` | The local model; `snowflake/snowflake-arctic-embed-m` is the other calibrated choice |
-| `MODELS_DIR` | `~/.profile-match/models` | Where the local model is downloaded |
+| `MODELS_DIR` | `~/.resume-shortlister/models` | Where the local model is downloaded |
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | With `EMBEDDER=openai` |
-| `PROFILE_MATCH_HOME` | `~/.profile-match` | Local data: indexes, uploads, sessions, `.env` |
-| `INDEX_DIR` / `UPLOADS_DIR` / `SESSIONS_DB` | under `PROFILE_MATCH_HOME` | Override one location (`CHROMA_DB_DIR` still works for `INDEX_DIR`) |
+| `RESUME_SHORTLISTER_HOME` | `~/.resume-shortlister` | Local data: indexes, uploads, sessions, `.env` |
+| `INDEX_DIR` / `UPLOADS_DIR` / `SESSIONS_DB` | under `RESUME_SHORTLISTER_HOME` | Override one location (`CHROMA_DB_DIR` still works for `INDEX_DIR`) |
 | `REPORTS_DIR` | `reports` | Where reports are saved; the only directory the agent may write to |
 | `SHORTLIST_SIZE` | `10` | Candidates kept after round 1 |
 | `SCREENING_ROUNDS` | `3` | 1: retrieval only; 2: + deep analysis; 3: + interview recommendations |
 | `SAVE_REPORTS` | `true` | Save reports after every screening |
-| `LLM_CACHE` / `LLM_CACHE_DB` | `true` / `~/.profile-match/llm_cache.sqlite` | Reuse the model's answer to a question asked before |
+| `LLM_CACHE` / `LLM_CACHE_DB` | `true` / `~/.resume-shortlister/llm_cache.sqlite` | Reuse the model's answer to a question asked before |
 
 Settings come from the environment, then `./.env`, then
-`~/.profile-match/.env`. The older `OPENAI_MODEL`, `OPENAI_TEMPERATURE`,
+`~/.resume-shortlister/.env`. The older `OPENAI_MODEL`, `OPENAI_TEMPERATURE`,
 `OPENAI_TIMEOUT` and `OPENAI_MAX_RETRIES` still work for the OpenAI provider.
-`profile-match index` and `list` need no API key at all; screening and chat
+`resume-shortlister index` and `list` need no API key at all; screening and chat
 need a chat model (a local Ollama model works without one).
 
 ## Project layout
 
 | Path | Purpose |
 | --- | --- |
-| `pyproject.toml` | Package metadata, dependencies (provider and `dev` extras) and the `profile-match` command |
-| `profile_matching/app.py` | The `profile-match` command line |
-| `profile_matching/agent/graph.py` | The LangGraph graph (`build_graph`, `screen`) |
+| `pyproject.toml` | Package metadata, dependencies (provider and `dev` extras) and the `resume-shortlister` command |
+| `resume_shortlister/app.py` | The `resume-shortlister` command line |
+| `resume_shortlister/agent/graph.py` | The LangGraph graph (`build_graph`, `screen`) |
 | `matching_agent.py`, `main.py` | Entry points for a source checkout (re-export the graph; run the CLI) |
-| `profile_matching/sessions.py` | Saved chat sessions in SQLite |
-| `profile_matching/maintenance.py` | Finding and removing old uploads, orphaned indexes and old sessions |
+| `resume_shortlister/sessions.py` | Saved chat sessions in SQLite |
+| `resume_shortlister/maintenance.py` | Finding and removing old uploads, orphaned indexes and old sessions |
 | `Dockerfile` | Container image (non-root, data in a volume) |
-| `profile_matching/pools.py` | One resume pool per folder: indexing, incremental sync, intake report |
-| `profile_matching/agent/` | `graph.py`, `state.py` (state, checkpointer), `nodes.py`, `routing.py`, `text.py` |
-| `profile_matching/screening.py` | The three screening rounds |
-| `profile_matching/guardrails.py` | Review items, evidence grounding, verdict bounds, rubric, decision rule, injection checks |
-| `profile_matching/requirements.py` | Requirement extraction: the model proposes, rules decide where the text is explicit |
-| `profile_matching/changes.py` | Requirement and ranking diffs with a reason for every move |
-| `profile_matching/explainability.py` | Per-candidate score breakdown, strengths and gaps, detailed report, saving |
-| `profile_matching/reports.py` | Shortlist report, chat summary, assistant context |
-| `profile_matching/analysis.py` | Comparison, interview questions and report lookup behind the tools |
-| `profile_matching/tools/` | Agent tools, built per `Services` by factories |
-| `profile_matching/conversation.py` | A conversation with the agent as a stream of events, shared by the terminal and the web app |
-| `profile_matching/cli.py` | Rich terminal chat: prints a conversation's events |
-| `profile_matching/web/` | The local web app: FastAPI API (`app.py`), open sessions (`workspace.py`), response shapes (`models.py`), the built UI (`static/`) |
+| `resume_shortlister/pools.py` | One resume pool per folder: indexing, incremental sync, intake report |
+| `resume_shortlister/agent/` | `graph.py`, `state.py` (state, checkpointer), `nodes.py`, `routing.py`, `text.py` |
+| `resume_shortlister/screening.py` | The three screening rounds |
+| `resume_shortlister/guardrails.py` | Review items, evidence grounding, verdict bounds, rubric, decision rule, injection checks |
+| `resume_shortlister/requirements.py` | Requirement extraction: the model proposes, rules decide where the text is explicit |
+| `resume_shortlister/changes.py` | Requirement and ranking diffs with a reason for every move |
+| `resume_shortlister/explainability.py` | Per-candidate score breakdown, strengths and gaps, detailed report, saving |
+| `resume_shortlister/reports.py` | Shortlist report, chat summary, assistant context |
+| `resume_shortlister/analysis.py` | Comparison, interview questions and report lookup behind the tools |
+| `resume_shortlister/tools/` | Agent tools, built per `Services` by factories |
+| `resume_shortlister/conversation.py` | A conversation with the agent as a stream of events, shared by the terminal and the web app |
+| `resume_shortlister/cli.py` | Rich terminal chat: prints a conversation's events |
+| `resume_shortlister/web/` | The local web app: FastAPI API (`app.py`), open sessions (`workspace.py`), response shapes (`models.py`), the built UI (`static/`) |
 | `frontend/` | The browser UI's source (React, TypeScript, Vite); see `frontend/README.md` |
-| `profile_matching/llm.py` | The single path to the chat model: `structured(...)`, `with_tools(...)` |
-| `profile_matching/llm_cache.py` | Stored model answers: the same question always gets the same answer, with an audit trail |
-| `profile_matching/providers.py` | Chat model providers: how each is built, its key, its quirks, its error messages |
-| `profile_matching/schemas.py` | Pydantic models shared across the agent |
-| `profile_matching/prompts.py` | All prompt templates |
-| `profile_matching/services.py`, `candidates.py`, `config.py`, `markdown.py` | Shared dependencies, candidate lookup, settings, Markdown helpers |
-| `profile_matching/rag/` | Retrieval engine: `fs_tools` (read, list, search files), `resume_rag` (section chunking, metadata extraction, indexing), `vector_store` (SQLite records, exact cosine search with NumPy), `job_matcher` (JD parsing, hybrid search, must-have checks), `skills_vocab` (skill aliases) |
+| `resume_shortlister/llm.py` | The single path to the chat model: `structured(...)`, `with_tools(...)` |
+| `resume_shortlister/llm_cache.py` | Stored model answers: the same question always gets the same answer, with an audit trail |
+| `resume_shortlister/providers.py` | Chat model providers: how each is built, its key, its quirks, its error messages |
+| `resume_shortlister/schemas.py` | Pydantic models shared across the agent |
+| `resume_shortlister/prompts.py` | All prompt templates |
+| `resume_shortlister/services.py`, `candidates.py`, `config.py`, `markdown.py` | Shared dependencies, candidate lookup, settings, Markdown helpers |
+| `resume_shortlister/rag/` | Retrieval engine: `fs_tools` (read, list, search files), `resume_rag` (section chunking, metadata extraction, indexing), `vector_store` (SQLite records, exact cosine search with NumPy), `job_matcher` (JD parsing, hybrid search, must-have checks), `skills_vocab` (skill aliases) |
 | `scripts/` | Sample resume generator, stability checks (screening, requirements), ranking evaluation (development tools, not part of the product) |
 | `tests/` | Offline pytest suite; `tests/fixtures/` holds 12 sample resumes and 7 sample JDs |
 
@@ -642,7 +645,7 @@ The synthetic resumes cover:
 ```bash
 python -m scripts.generate_sample_resumes /tmp/sample_resumes             # 100 resumes
 python -m scripts.generate_sample_resumes /tmp/more --count 250 --seed 7
-profile-match chat --resumes /tmp/sample_resumes
+resume-shortlister chat --resumes /tmp/sample_resumes
 ```
 
 The same seed always produces the same resumes. The measurements and the
@@ -683,7 +686,7 @@ knockouts, rankings and scores for all 100 candidates in every query.
 
 ## Responsible use
 
-Profile Match assists people who screen resumes; it does not make hiring
+Resume Shortlister assists people who screen resumes; it does not make hiring
 decisions, and it should not be used to reject candidates without a person
 reviewing the result.
 
@@ -704,9 +707,9 @@ reviewing the result.
   are used. Check what applies to you; this project provides no compliance
   guarantees.
 - **Candidate data.** Resumes, the index, saved sessions and stored model
-  answers stay on your machine under `~/.profile-match`. Resume text is sent to
+  answers stay on your machine under `~/.resume-shortlister`. Resume text is sent to
   the chat model you configure; use a local model (Ollama) if it must not leave
-  your machine. `profile-match clean` and `profile-match cache --clear` delete
+  your machine. `resume-shortlister clean` and `resume-shortlister cache --clear` delete
   what is no longer needed.
 - **Candidates can game resumes.** Instruction-like text is flagged, but treat
   any result as a starting point for a conversation, not a verdict.
@@ -759,7 +762,7 @@ reviewing the result.
 - **Unsupported formats.** Legacy `.doc`, `.rtf`, `.odt`, scanned PDFs and
   images aren't read; they are reported so they can be converted. Subfolders of a resume folder aren't
   read either.
-- **Uploads accumulate** until `profile-match clean` removes them.
+- **Uploads accumulate** until `resume-shortlister clean` removes them.
 
 ## License and security
 

@@ -2,7 +2,7 @@
 
 Every provider is a LangChain chat-model integration, imported only when it is
 chosen: OpenAI's comes with the base install, the others with a pip extra
-(``pip install 'profile-match[anthropic]'``). Each entry records how to build
+(``pip install 'resume-shortlister[anthropic]'``). Each entry records how to build
 the model and the quirks the rest of the code never sees: Claude rejects
 sampling parameters and gives structured output through its native JSON-schema
 mode, OpenAI's reasoning models need the Responses API, a local Ollama server
@@ -68,7 +68,7 @@ class Provider:
 
     @property
     def install_hint(self) -> str:
-        return f"pip install 'profile-match[{self.extra}]'" if self.extra else "pip install profile-match"
+        return f"pip install 'resume-shortlister[{self.extra}]'" if self.extra else "pip install resume-shortlister"
 
     def model_type(self) -> type[BaseChatModel]:
         module, _, name = self.model_class.partition(":")
@@ -208,7 +208,7 @@ def missing_key(key_vars: tuple[str, ...]) -> str | None:
 def missing_key_message(var: str, purpose: str) -> str:
     return (
         f"{var} is not set ({purpose}). Export it, or put {var}=... in a .env file "
-        "in this folder or in ~/.profile-match/.env."
+        "in this folder or in ~/.resume-shortlister/.env."
     )
 
 

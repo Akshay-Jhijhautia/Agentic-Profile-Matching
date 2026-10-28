@@ -2,7 +2,7 @@ import pytest
 from docx import Document
 from fpdf import FPDF
 
-from profile_matching.rag import fs_tools
+from resume_shortlister.rag import fs_tools
 
 
 @pytest.fixture

@@ -11,9 +11,9 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from rich.console import Console
 
 import matching_agent
-from profile_matching import cli, conversation, pools
-from profile_matching.agent.routing import IntentRouter
-from profile_matching.schemas import (
+from resume_shortlister import cli, conversation, pools
+from resume_shortlister.agent.routing import IntentRouter
+from resume_shortlister.schemas import (
     CandidateNote,
     ChangeNarrative,
     ComparisonVerdict,
@@ -210,7 +210,7 @@ def test_repl_commands_and_conversation(chat, monkeypatch):
     console = chat.console
     assert cli.run(chat.graph, "gpt-test", console=console) == 0
     text = output(chat)
-    assert "Matching agent (gpt-test)" in text
+    assert "Resume Shortlister (gpt-test)" in text
     assert "/reset" in text and "Start a new conversation" in text  # help table
     assert text.count("No report yet") == 2  # before the search and after /reset
     assert "Shortlist report" in text and "Started a new conversation (session " in text

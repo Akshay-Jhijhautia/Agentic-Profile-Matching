@@ -4,15 +4,15 @@ from pathlib import Path
 
 import pytest
 
-from profile_matching import pools, screening
-from profile_matching.candidates import trim_resume
-from profile_matching.config import Settings
-from profile_matching.pools import pool_name, resolve_folder
+from resume_shortlister import pools, screening
+from resume_shortlister.candidates import trim_resume
+from resume_shortlister.config import Settings
+from resume_shortlister.pools import pool_name, resolve_folder
 from fpdf import FPDF
 
-from profile_matching.rag import fs_tools
-from profile_matching.schemas import Requirements
-from profile_matching.services import Services
+from resume_shortlister.rag import fs_tools
+from resume_shortlister.schemas import Requirements
+from resume_shortlister.services import Services
 from tests.paths import RESUMES_DIR
 
 ROLE = Requirements.model_validate({
