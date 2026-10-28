@@ -7,7 +7,13 @@
 - **Local web API** (`profile-match web`): sessions, streamed turns (Server-Sent
   Events), folder loading, resume uploads, candidate reports and the report
   download, served on 127.0.0.1 only, with a per-launch token and a Host check.
-  The browser interface builds on it.
+- **Browser interface** (`profile-match web` opens it): drop resume files or
+  pick a folder, describe the role, follow the screening as it runs, confirm
+  open requirements, and see the ranked shortlist with its recommendations;
+  download the report. Built with React and TypeScript into the package, so
+  installing needs no Node.
+- `profile-match web --host`: the Docker image serves the web app; publish its
+  port on this computer only (`-p 127.0.0.1:8765:8765`).
 
 ### Changed
 

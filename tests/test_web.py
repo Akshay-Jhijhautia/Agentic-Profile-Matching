@@ -205,6 +205,9 @@ def test_sessions_can_be_deleted(client):
 def test_web_command_starts_the_server(monkeypatch):
     from profile_matching.web import app as web_app
     calls = []
-    monkeypatch.setattr(web_app, "serve", lambda port, open_browser: calls.append((port, open_browser)))
+    monkeypatch.setattr(web_app, "serve", lambda port, open_browser, host: calls.append((port, open_browser, host)))
+    monkeypatch.delenv("PROFILE_MATCH_WEB_HOST", raising=False)
     assert cli_app.main(["web", "--port", "9001", "--no-browser"]) == 0
-    assert calls == [(9001, False)]
+    monkeypatch.setenv("PROFILE_MATCH_WEB_HOST", "0.0.0.0")  # as the Docker image sets it
+    assert cli_app.main(["web"]) == 0
+    assert calls == [(9001, False, "127.0.0.1"), (8765, True, "0.0.0.0")]

@@ -11,6 +11,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import cached_property
 
 from .. import sessions
 from ..agent.graph import build_graph
@@ -29,10 +30,17 @@ class OpenSession:
 class Workspace:
     def __init__(self, make_services: Callable[[], Services]):
         self._make_services = make_services
-        self.settings = make_services().settings
-        self.saver = sessions.open_saver(self.settings.sessions_db)
         self._open: dict[str, OpenSession] = {}
         self._lock = threading.Lock()
+
+    # Opened on first use, so building the app (e.g. to export its API schema) touches nothing.
+    @cached_property
+    def settings(self):
+        return self._make_services().settings
+
+    @cached_property
+    def saver(self):
+        return sessions.open_saver(self.settings.sessions_db)
 
     def _conversation(self, session_id: str | None = None) -> tuple[Conversation, Services]:
         services = self._make_services()

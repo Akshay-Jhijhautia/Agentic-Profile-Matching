@@ -7,7 +7,7 @@
     profile-match sessions [--delete ID]                          saved chat sessions
     profile-match clean    [--older-than DAYS] [--yes]            remove old uploads, indexes, sessions, answers
     profile-match cache    [--clear]                              stored model answers (reproducible runs)
-    profile-match web      [--port PORT] [--no-browser]           the app in your browser (this machine only)
+    profile-match web      [--port PORT] [--no-browser] [--host]  the app in your browser (this machine only)
     profile-match --version
 
 PATH is a folder of resumes or one or more resume files (files are copied
@@ -18,6 +18,7 @@ Add ``--help`` after a command to see its options.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, version
@@ -201,13 +202,15 @@ def cache(argv: list[str]) -> int:
 
 
 def web(argv: list[str]) -> int:
-    from .web.app import DEFAULT_PORT, serve
+    from .web.app import DEFAULT_HOST, DEFAULT_PORT, serve
 
     parser = _parser("web", "Open Profile Match in your browser. It runs on this machine only.")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Port on 127.0.0.1 (default: {DEFAULT_PORT}).")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Port to listen on (default: {DEFAULT_PORT}).")
     parser.add_argument("--no-browser", action="store_true", help="Do not open the browser.")
+    parser.add_argument("--host", default=os.getenv("PROFILE_MATCH_WEB_HOST") or DEFAULT_HOST,
+                        help="Address to listen on (default: 127.0.0.1). Use 0.0.0.0 only inside a container.")
     args = parser.parse_args(argv)
-    serve(args.port, open_browser=not args.no_browser)
+    serve(args.port, open_browser=not args.no_browser, host=args.host)
     return 0
 
 

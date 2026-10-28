@@ -14,6 +14,7 @@ open in the browser cannot drive the API.
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import shlex
 import shutil
@@ -25,6 +26,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from .. import __version__, analysis
 from ..services import Services
@@ -42,16 +44,22 @@ from .workspace import OpenSession, Workspace
 TOKEN_HEADER = "X-Profile-Match-Token"
 LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost"})
 DEFAULT_PORT = 8765
+# The address to listen on. Only inside a container is it 0.0.0.0 (the Docker image sets
+# PROFILE_MATCH_WEB_HOST), with the port published on the host's 127.0.0.1.
+DEFAULT_HOST = "127.0.0.1"
 # Longest message accepted (a long job description fits easily).
 MAX_TEXT_CHARS = 50_000
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # per resume file
+# The browser app, built from frontend/ (``npm run build``); its page carries this placeholder.
+STATIC_DIR = Path(__file__).parent / "static"
+TOKEN_PLACEHOLDER = "__PROFILE_MATCH_TOKEN__"
 
-_PLACEHOLDER_PAGE = """<!doctype html>
-<html><head><meta charset="utf-8"><meta name="profile-match-token" content="{token}">
-<title>Profile Match</title></head>
+_MISSING_UI_PAGE = """<!doctype html>
+<html><head><meta charset="utf-8"><title>Profile Match</title></head>
 <body style="font-family: sans-serif; margin: 3rem;">
 <h1>Profile Match {version}</h1>
-<p>The API is running. The browser interface is not built yet; use <code>profile-match chat</code> meanwhile.</p>
+<p>The browser interface is missing from this installation (build it with <code>npm run build</code>
+in <code>frontend/</code>). The terminal chat works: <code>profile-match chat</code>.</p>
 </body></html>"""
 
 
@@ -108,9 +116,17 @@ def create_app(
 
     # --- the page ---
 
+    page = STATIC_DIR / "index.html"
+    if (STATIC_DIR / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    def index() -> str:
-        return _PLACEHOLDER_PAGE.format(token=app.state.token, version=__version__)
+    def index() -> HTMLResponse:
+        if not page.is_file():
+            return HTMLResponse(_MISSING_UI_PAGE.format(version=__version__), status_code=503)
+        # Never cached: the token changes with every start.
+        return HTMLResponse(page.read_text().replace(TOKEN_PLACEHOLDER, app.state.token),
+                            headers={"Cache-Control": "no-store"})
 
     # --- status and sessions ---
 
@@ -218,13 +234,22 @@ def create_app(
     return app
 
 
-def serve(port: int = DEFAULT_PORT, open_browser: bool = True) -> None:
-    """Run the app on 127.0.0.1:``port`` until interrupted, opening it in the browser."""
+def serve(port: int = DEFAULT_PORT, open_browser: bool = True, host: str = DEFAULT_HOST) -> None:
+    """Run the app on ``host``:``port`` until interrupted, opening it in the browser.
+
+    Requests are answered only when addressed to 127.0.0.1 or localhost, whatever
+    ``host`` listens on. ``PROFILE_MATCH_TOKEN`` fixes the token instead of
+    generating one: for UI development, where the Vite dev server sends it (see
+    frontend/README.md).
+    """
     import uvicorn
 
-    app = create_app()
+    app = create_app(token=os.getenv("PROFILE_MATCH_TOKEN") or None)
     url = f"http://127.0.0.1:{port}/"
-    print(f"Profile Match is running at {url} (Ctrl-C to stop).")
-    if open_browser:
-        threading.Timer(1.0, webbrowser.open, args=(url,)).start()
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+    if host == DEFAULT_HOST:
+        print(f"Profile Match is running at {url} (Ctrl-C to stop).")
+        if open_browser:
+            threading.Timer(1.0, webbrowser.open, args=(url,)).start()
+    else:  # in a container: the browser is on the host, at the port Docker published
+        print(f"Profile Match is listening on {host}:{port}. Open http://127.0.0.1:<published port>/ (Ctrl-C to stop).")
+    uvicorn.run(app, host=host, port=port, log_level="warning")

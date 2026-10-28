@@ -69,5 +69,9 @@ version = { attr = "profile_matching.__version__" }
 [tool.setuptools.packages.find]
 include = ["profile_matching*"]
 
+[tool.setuptools.package-data]
+# The browser app, built from frontend/ into the package.
+"profile_matching.web" = ["static/*.html", "static/*.json", "static/assets/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
