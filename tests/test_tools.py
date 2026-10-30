@@ -168,8 +168,9 @@ def _verdict(ranking, note_ids):
 
 
 def test_compare_candidates_uses_role_from_state(tools, services):
-    # The model answers with names instead of ids; they are mapped back to ids.
-    services.model = FakeChatModel({ComparisonVerdict: _verdict(["John Doe"], ["John", "maria_garcia"])})
+    # The model knows the candidates by label; its answer is mapped back to ids and names.
+    verdict = _verdict(["Candidate 1"], ["Candidate 1", "candidate_2"])
+    services.model = FakeChatModel({ComparisonVerdict: verdict.model_copy(update={"summary": "Candidate 1 fits best."})})
     result = tools["compare_candidates"].invoke(
         {"candidate_ids": ["maria", "john_doe"], "state": {"requirements": DJANGO_ROLE.model_dump()}}
     )
@@ -177,10 +178,13 @@ def test_compare_candidates_uses_role_from_state(tools, services):
     assert [c["id"] for c in result["candidates"]] == ["john_doe", "maria_garcia"]
     assert result["verdict"]["ranking"] == ["john_doe", "maria_garcia"]
     assert [n["candidate_id"] for n in result["verdict"]["notes"]] == ["john_doe", "maria_garcia"]
+    assert result["verdict"]["summary"] == "John Doe fits best."
 
     payload = _payload(services.model)
     assert payload["requirements"]["must_have"][0]["skill"] == "Django"
-    assert all(c["resume_text"] for c in payload["candidates"])
+    assert [c["candidate_id"] for c in payload["candidates"]] == ["Candidate 1", "Candidate 2"]
+    assert not any({"id", "name", "resume"} & set(c) for c in payload["candidates"])
+    assert all(c["resume_text"] and "Maria" not in c["resume_text"] for c in payload["candidates"])
 
 
 def test_compare_candidates_without_role(tools, services):
@@ -230,7 +234,8 @@ def test_interview_questions_target_gaps_and_unverified_claims(tools, services):
 
     payload = _payload(services.model)
     assert payload["question_count"] == 4 and payload["focus_areas"] == focus
-    assert "John Doe" in payload["resume_text"]
+    assert payload["candidate"]["candidate_id"] == "Candidate 1" and "name" not in payload["candidate"]
+    assert "John" not in payload["resume_text"] and "example.com" not in payload["resume_text"]
 
 
 @pytest.mark.parametrize("count", [2, 11])

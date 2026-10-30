@@ -112,9 +112,7 @@ def test_chunk_resume_one_chunk_per_section_and_skips_short_header():
     assert [c["section"] for c in chunks] == ["Summary", "Skills", "Experience", "Education"]
     assert [c["chunk_index"] for c in chunks] == [0, 1, 2, 3]
     assert chunks[2]["id"] == "ada.txt::experience::0"
-    assert chunks[1]["document"] == (
-        "Candidate: Ada Lovelace | Section: Skills\nPython, Django, PostgreSQL"
-    )
+    assert chunks[1]["document"] == "Section: Skills\nPython, Django, PostgreSQL"
     assert chunks[1]["text"] == "Python, Django, PostgreSQL"
     assert all(c["resume_path"] == "resumes/ada.txt" for c in chunks)
 

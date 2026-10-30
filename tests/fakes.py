@@ -77,11 +77,12 @@ def fake_assessment(deep_score: int = 80) -> Assessment:
 
 def fake_review(verdict: str = "strong", risk_flags: list[RiskFlag] | None = None) -> Callable[[list], DeepReview]:
     """A model answering ``verdict`` for every requirement it is asked about, quoting the
-    resume's first line (which is really in the resume, so the evidence check accepts it)."""
+    resume's first line long enough to be evidence (it is really in the resume, so the
+    evidence check accepts it)."""
 
     def answer(messages: list) -> DeepReview:
         payload = json.loads(messages[1].content)
-        quote = payload["resume_text"].strip().splitlines()[0]
+        quote = next(line for line in payload["resume_text"].splitlines() if len(line.strip()) >= 30)
         return DeepReview(
             requirements=[
                 RequirementReview(requirement_id=item["id"], verdict=verdict,
@@ -98,7 +99,7 @@ def fake_review(verdict: str = "strong", risk_flags: list[RiskFlag] | None = Non
 def fake_rationales(messages: list) -> DecisionRationales:
     candidates = json.loads(messages[1].content)["candidates"]
     return DecisionRationales(rationales=[
-        DecisionRationale(candidate_id=c["id"], rationale=f"Final score {c['final_score']}.") for c in candidates
+        DecisionRationale(candidate_id=c["candidate_id"], rationale=f"Final score {c['final_score']}.") for c in candidates
     ])
 
 
@@ -106,7 +107,7 @@ def fake_advisor(messages: list) -> ImprovementSuggestions:
     """One improvement per borderline candidate it is asked about."""
     candidates = json.loads(messages[1].content)["candidates"]
     return ImprovementSuggestions(candidates=[
-        CandidateImprovements(candidate_id=c["id"], improvements=[
+        CandidateImprovements(candidate_id=c["candidate_id"], improvements=[
             Improvement(gap="No GraphQL", suggestion="Build a GraphQL API", how_to_verify="Ask for the repo"),
         ])
         for c in candidates

@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from .rag import fs_tools, resume_rag
+from .rag import fs_tools, personal_data, resume_rag
 
 _SEPARATORS_RE = re.compile(r"[\s_\-]+")
 # Resume text sent to the LLM; longer resumes are trimmed section by section.
@@ -33,6 +33,16 @@ def trim_resume(text: str, max_chars: int) -> str:
     blocks = [body if name in {"Header", "General"} else f"{name.upper()}\n{body}" for name, body in ordered]
     # Priority order puts what matters least last, so the cut only ever lands there.
     return "\n\n".join(blocks)[:max_chars]
+
+
+def blind_resume(text: str, name: str | None) -> str:
+    """The resume as the model reads it in blind screening: the header's name, contact and
+    location lines dropped, and the name, contact details and personal fields replaced
+    wherever else they appear (``personal_data``)."""
+    lines = text.splitlines()
+    body = next((i for i, line in enumerate(lines) if resume_rag.match_section_header(line)), 0)
+    header = [line for line in lines[:body] if line.strip() and not personal_data.is_personal_line(line, name)]
+    return personal_data.redact("\n".join(header + lines[body:]), name)
 
 
 class CandidateNotFoundError(LookupError):
@@ -129,3 +139,8 @@ class CandidateDirectory:
         if not result["success"]:
             raise FileNotFoundError(f"Could not read {profile.name}'s resume: {result['error']}")
         return result["content"] if max_chars is None else trim_resume(result["content"], max_chars)
+
+    def blind_text(self, profile: CandidateProfile, max_chars: int = MAX_RESUME_CHARS) -> str:
+        """The resume for a model that judges or compares candidates: without who they are
+        (``blind_resume``), trimmed section by section to ``max_chars``."""
+        return trim_resume(blind_resume(self.resume_text(profile, None), profile.name), max_chars)

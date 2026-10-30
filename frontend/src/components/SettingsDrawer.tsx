@@ -69,6 +69,8 @@ function Details({ settings }: { settings: SettingsView }) {
           </dd>
           <dt>Interview</dt>
           <dd>recommended from a final score of {settings.interview_threshold}, with no must-have missing and no high risk</dd>
+          <dt>Blind</dt>
+          <dd>the model never sees names, contact details or personal fields</dd>
         </dl>
       </section>
 

@@ -5,6 +5,10 @@ Each analysis has a deterministic part (facts, scores, must-have checks from
 the hybrid matcher) and an LLM part that reasons over those facts and the
 resume text. The facts are returned alongside the LLM output, so every claim
 the agent makes can be traced back to a number or a resume line.
+
+The LLM part is blind: it sees candidates as "Candidate 1", "Candidate 2"…,
+with resumes stripped of who they are (``anonymous``), and its answer is
+mapped back to ids and names.
 """
 
 from __future__ import annotations
@@ -12,6 +16,7 @@ from __future__ import annotations
 import json
 
 from . import explainability, llm, prompts, screening
+from .anonymous import Anonymous
 from .candidates import CandidateProfile
 from .schemas import CandidateMatch, ComparisonVerdict, InterviewQuestions, Requirements
 from .services import Services
@@ -68,15 +73,20 @@ def candidate_facts(
     ]
 
 
+# Facts that identify a candidate, never shown to a model that judges them.
+IDENTITY_FIELDS = {"id", "name", "resume"}
+
+
+def _anonymous_fact(fact: dict, anonymous: Anonymous) -> dict:
+    """A candidate's facts under their label, without what identifies them."""
+    return {"candidate_id": anonymous.label(fact["id"])} | {
+        key: value for key, value in fact.items() if key not in IDENTITY_FIELDS
+    }
+
+
 def _llm_payload(requirements: Requirements | None, **sections) -> str:
     body = {"requirements": requirements.model_dump() if requirements else None} | sections
     return json.dumps(body, ensure_ascii=False)
-
-
-def _to_id(services: Services, ref: str) -> str | None:
-    """The id the LLM meant (it sometimes answers with a name), or None if unknown."""
-    profile = services.candidates.find(ref)
-    return profile.id if profile else None
 
 
 def compare_candidates(
@@ -90,23 +100,31 @@ def compare_candidates(
     _check_range("Number of distinct candidates", len(profiles), COMPARE_LIMITS)
     facts = candidate_facts(services, profiles, requirements, shortlist)
     by_id = {p.id: p for p in profiles}
+    anonymous = Anonymous((fact["id"], fact["name"]) for fact in facts)
     payload = _llm_payload(
         requirements,
-        candidates=[fact | {"resume_text": services.candidates.resume_text(by_id[fact["id"]])} for fact in facts],
+        candidates=[
+            _anonymous_fact(fact, anonymous) | {"resume_text": services.candidates.blind_text(by_id[fact["id"]])}
+            for fact in facts
+        ],
     )
     verdict = llm.structured(ComparisonVerdict, prompts.COMPARE_CANDIDATES, payload, model=services.model, cache=services.llm_cache)
 
-    # Keep the LLM's order for the ids it named, then any it left out.
-    named = [i for i in dict.fromkeys(_to_id(services, ref) for ref in verdict.ranking) if i in by_id]
+    # Keep the LLM's order for the candidates it named, then any it left out.
+    named = [i for i in dict.fromkeys(map(anonymous.id_of, verdict.ranking)) if i in by_id]
     ranking = named + [p.id for p in profiles if p.id not in named]
     notes = [
-        note.model_dump() | {"candidate_id": _to_id(services, note.candidate_id) or note.candidate_id}
+        {
+            "candidate_id": anonymous.id_of(note.candidate_id) or note.candidate_id,
+            "strengths": [anonymous.named(s) for s in note.strengths],
+            "weaknesses": [anonymous.named(w) for w in note.weaknesses],
+        }
         for note in verdict.notes
     ]
     return {
         "role": requirements.role_title if requirements else None,
         "candidates": facts,
-        "verdict": {"ranking": ranking, "notes": notes, "summary": verdict.summary},
+        "verdict": {"ranking": ranking, "notes": notes, "summary": anonymous.named(verdict.summary)},
     }
 
 
@@ -137,17 +155,21 @@ def generate_interview_questions(
     profile = services.candidates.resolve(ref)
     (fact,) = candidate_facts(services, [profile], requirements, shortlist)
     focus = focus_areas(fact, requirements)
+    anonymous = Anonymous([(profile.id, profile.name)])
     payload = _llm_payload(
         requirements,
-        candidate=fact, focus_areas=focus, resume_text=services.candidates.resume_text(profile),
-        question_count=count,
+        candidate=_anonymous_fact(fact, anonymous), focus_areas=focus,
+        resume_text=services.candidates.blind_text(profile), question_count=count,
     )
     result = llm.structured(InterviewQuestions, prompts.INTERVIEW_QUESTIONS, payload, model=services.model, cache=services.llm_cache)
     return {
         "candidate": {"id": profile.id, "name": profile.name},
         "role": requirements.role_title if requirements else None,
         "focus_areas": focus,
-        "questions": [q.model_dump() for q in result.questions[:count]],
+        "questions": [
+            q.model_dump() | {"question": anonymous.named(q.question), "strong_answer": anonymous.named(q.strong_answer)}
+            for q in result.questions[:count]
+        ],
     }
 
 

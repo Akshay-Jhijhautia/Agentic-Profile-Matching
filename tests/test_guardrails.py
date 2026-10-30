@@ -244,9 +244,11 @@ def test_structured_gives_up_after_the_retry():
         llm.structured(SkillRequirement, "system", "user", model=FakeChatModel({SkillRequirement: respond}))
 
 
-def test_prompts_with_resume_text_mark_it_untrusted():
+def test_prompts_with_resume_text_mark_it_untrusted_and_anonymous():
     for prompt in (prompts.DEEP_ASSESSMENT, prompts.COMPARE_CANDIDATES, prompts.INTERVIEW_QUESTIONS):
-        assert prompt.endswith(prompts.UNTRUSTED_RESUME)
+        assert prompts.UNTRUSTED_RESUME in prompt and prompts.ANONYMOUS in prompt
+    for prompt in (prompts.DECISION_RATIONALES, prompts.IMPROVEMENT_SUGGESTIONS):
+        assert prompts.ANONYMOUS in prompt and prompts.LABELS in prompt
 
 
 def test_decisions_saved_by_earlier_versions_still_load():

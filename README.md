@@ -25,6 +25,8 @@ in the terminal.
   auditable rules.
 - **No invented experience.** Every positive verdict needs a quote that is
   actually in the resume, or it is downgraded.
+- **Blind to who the candidate is.** The model judges anonymous candidates:
+  no name, contact details or personal fields, and no name in the search.
 - **Same input, same result.** Rules settle what the job description states,
   you confirm what it leaves open, and stored model answers make a repeated
   screening identical.
@@ -34,7 +36,7 @@ in the terminal.
   server. Embeddings, index and data stay on your machine; with Ollama, nothing
   leaves it.
 - **Measured, not claimed.** Ranking quality, run-to-run stability and model
-  agreement are measured with scripts in this repository, alongside 562 tests.
+  agreement are measured with scripts in this repository, alongside 576 tests.
 
 **Status:** developer preview (v1.1; the browser interface,
 `resume-shortlister web`, is new on the main branch and comes with 1.2).
@@ -113,10 +115,12 @@ reviewing the result.
 - **Explain, don't hide.** Every score comes with its breakdown, the resume
   lines behind each verdict and the rule that produced the recommendation, so
   any result can be questioned and checked.
-- **Bias.** Names, contact details and other personal details still reach the
-  model during deep analysis (blind screening is planned), and the scoring has
-  only been validated on synthetic resumes. Do not rely on it for decisions
-  until you have checked it on your own, representative data.
+- **Bias.** Screening is blind: the model never sees a candidate's name,
+  contact details or personal fields, and the search ignores them
+  ([details](docs/how-it-works.md#blind-screening)). Other signals remain,
+  such as schools, graduation years and locations in the work history, and the
+  scoring has only been validated on synthetic resumes. Do not rely on it for
+  decisions until you have checked it on your own, representative data.
 - **Regulation.** Software that assists hiring decisions is regulated in some
   places: the EU AI Act treats it as high-risk, and some jurisdictions (for
   example New York City) require bias audits before automated screening tools
@@ -145,8 +149,12 @@ reviewing the result.
   different model can still judge a borderline candidate differently.
 - **Heuristic skill years.** A skill's years come from the dated roles that
   mention it, so skills listed only in a Skills section are "unverified".
-- **Blind screening isn't implemented.** Names and contact details reach the
-  model during deep analysis.
+- **Blind screening covers identity, not every proxy.** Names, contact details
+  and personal fields are removed; schools, graduation years, locations in the
+  work history, affiliations and pronouns are not. A name part that is also a
+  skill or a month ("Ruby", "May") is hidden only as part of the full name.
+  The chat assistant, which talks to you rather than scoring anyone, and the
+  file tools read resumes as written.
 - **Synthetic data.** The embedding model was chosen, and its score range
   calibrated, on the generated sample resumes; real resumes may need both
   re-checked with `scripts/ranking_eval.py`.

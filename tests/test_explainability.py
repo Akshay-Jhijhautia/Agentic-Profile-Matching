@@ -151,7 +151,8 @@ def test_only_borderline_candidates_get_suggestions(services, john):
     (improved,) = screening.suggest_improvements(services, ROLE, [borderline])
     assert improved.improvements[0].suggestion == "Build a GraphQL API"
     _, messages = services.model.calls[0]
-    assert [c["id"] for c in json.loads(messages[1].content)["candidates"]] == ["john_doe"]
+    (sent,) = json.loads(messages[1].content)["candidates"]
+    assert sent["candidate_id"] == "Candidate 1" and not {"id", "name"} & set(sent)  # anonymous
 
 
 # --- the candidate report tool ------------------------------------------------------------------------

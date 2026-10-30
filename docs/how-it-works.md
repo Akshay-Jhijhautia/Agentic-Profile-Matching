@@ -163,6 +163,7 @@ run (`resume_shortlister/guardrails.py`):
 | **Evidence grounding.** Every verdict cites a verbatim quote, and code checks it is in the resume. A quote that isn't downgrades the verdict | Credit for invented experience |
 | **Facts bound verdicts.** A must-have that round 1 *measured* as met (years, experience, degree) counts as strong; an unverified one counts as exactly partial; a listed skill can't be missing | The model contradicting what code measured |
 | **Decision rule.** Recommend an interview when final ≥ 75, no must-have missing and no high-severity risk. Confidence comes from the margin and evidence quality. The model only explains | Different recommendations for the same evidence |
+| **Blind screening.** Every model call that judges or compares candidates gets them anonymous: labels instead of names and ids, resumes without name, contact details or personal fields ([below](#blind-screening)) | Who the candidate is influencing the judgement |
 | **Stable search text.** The semantic query is rendered only from the structured requirements, never from model-written prose | Rewording reordering the shortlist |
 | **Prompt-injection defence.** Resume text is marked as untrusted data in every prompt, and code flags instruction-like text ("ignore previous instructions…") as a high-severity risk | A resume steering its own evaluation |
 | **Validated, retried output.** Every structured answer is validated against its schema and retried once with the error | Malformed answers breaking the pipeline |
@@ -193,6 +194,47 @@ python -m scripts.stability_check tests/fixtures/job_descriptions/frontend_react
 
 `--models` also takes `provider:model`, to compare providers
 (`--models gpt-5.6-terra,anthropic:claude-opus-5-5`).
+
+## Blind screening
+
+Who a candidate is should play no part in judging them, so the model never
+learns it (`rag/personal_data.py`, `candidates.blind_resume`, `anonymous.py`):
+
+- **What the model reads.** In the deep review, the rationales, the
+  improvement suggestions, comparisons and interview questions, the resume
+  header's name, contact and location lines are dropped, and elsewhere the
+  name, emails, phone numbers, profile links and personal fields (date of
+  birth, age, gender, marital status, nationality, citizenship, religion,
+  address) are replaced with `[candidate]`, `[email]`, `[phone]`, `[link]` or
+  `[removed]`. The prompts say these removals are not gaps or risks.
+- **How it names them.** Ids are file names (`anika_laurent`), so candidates
+  are "Candidate 1", "Candidate 2" in the model's input, and its answers are
+  mapped back: references to ids, labels in its text to names. You read
+  "Anika Laurent", never a label.
+- **Round 1.** The search embeds and keyword-matches resume text without the
+  name or personal details, and a name is never read as a skill: before,
+  "Ruby Swift" was credited with Ruby and Swift from her name line.
+- **Evidence stays.** Dates, companies, schools and locations inside the work
+  history are kept, and a name part that is also a skill or a month ("Swift",
+  "May") is hidden only as part of the full name, so "built apps in Swift"
+  keeps its evidence. Quotes are checked against the text the model read.
+
+**Measured** on the 100 sample resumes:
+
+- *Search* (`scripts/ranking_eval.py`, 16 queries): knockouts identical in
+  every query; P@10 0.921 → 0.921 and AUC 0.994 → 0.995 with the default local
+  model; scores moved by 1.5 points or less on average per query (at most 6),
+  so the calibration holds.
+- *Screening* (`scripts/stability_check.py`, frontend JD, 5 runs each,
+  gpt-5.6-terra): the same ranking in every run, blind or not, and the same
+  decision agreement. Requirement verdicts were identical across runs; what
+  varies is how many risk flags the model lists. The candidate at the
+  threshold averaged 64.7 blind against 62.4 with names over 15 deep reviews
+  each, often enough to cross the interview threshold, which is where a
+  recruiter's second look belongs anyway.
+- *Leakage*: across a live screening, comparison and interview questions,
+  none of the 100 candidates' names, ids or emails appeared in anything sent
+  to the model. A test checks this on every screening.
 
 ## Reproducible results
 

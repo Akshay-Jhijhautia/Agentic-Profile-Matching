@@ -27,7 +27,7 @@ from typing import Protocol
 
 import openai
 
-from . import fs_tools, skills_vocab
+from . import fs_tools, personal_data, skills_vocab
 from .vector_store import Chunk, Collection, VectorStore
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ DEFAULT_DB_DIR = "index"
 COLLECTION_NAME = "resumes"
 # Part of every resume's content hash: bump it when chunking or metadata
 # extraction changes so the next `index` run refreshes every resume.
-PIPELINE_VERSION = "3"
+PIPELINE_VERSION = "4"
 
 MAX_CHUNK_CHARS = 1500
 HEADER_SECTION = "Header"
@@ -289,8 +289,10 @@ def chunk_resume(
 
     Returns ``[{"id", "section", "chunk_index", "text", "document",
     "candidate_name", "resume_path"}]``, where ``text`` is the raw section
-    text (used for excerpts) and ``document`` adds a
-    ``"Candidate: ... | Section: ..."`` prefix that gives the embedding context.
+    text (used for excerpts) and ``document`` is what is embedded and
+    keyword-searched: a ``"Section: ..."`` prefix for context, then the text
+    without the candidate's name, contact details or personal fields
+    (``personal_data``), so who they are plays no part in the search.
     """
     file_name = Path(resume_path).name
     chunks = []
@@ -305,13 +307,21 @@ def chunk_resume(
                     "section": section,
                     "chunk_index": index,
                     "text": piece,
-                    "document": f"Candidate: {candidate_name} | Section: {section}\n{piece}",
+                    "document": f"Section: {section}\n{_impersonal(piece, candidate_name, section)}",
                     "candidate_name": candidate_name,
                     "resume_path": resume_path,
                 }
             )
             index += 1
     return chunks
+
+
+def _impersonal(text: str, name: str | None, section: str) -> str:
+    """``text`` without personal details; in the header, its name, contact and location
+    lines are dropped whole."""
+    if section == HEADER_SECTION:
+        text = "\n".join(line for line in text.splitlines() if not personal_data.is_personal_line(line, name))
+    return personal_data.redact(text, name)
 
 
 # --- metadata extraction --------------------------------------------------------------
@@ -433,9 +443,11 @@ def _dedupe(items: list[str]) -> list[str]:
     return result
 
 
-def _extract_skills(sections: dict[str, str]) -> list[str]:
+def _extract_skills(sections: dict[str, str], candidate_name: str | None) -> list[str]:
     listed = _skills_from_list(sections.get("Skills", ""))
-    prose = "\n".join(body for name, body in sections.items() if name != "Skills")
+    prose = "\n".join(
+        _impersonal(body, candidate_name, section) for section, body in sections.items() if section != "Skills"
+    )
     return skills_vocab.with_implied(_dedupe(listed + skills_vocab.find_skills(prose)))
 
 
@@ -625,10 +637,12 @@ def extract_metadata(
     experience_years, skill_years = _extract_experience(sections, today)
     education, highest_degree = _extract_education(sections)
     email = _EMAIL_RE.search(text)
+    name = _extract_name(sections)
     metadata = {
-        "name": _extract_name(sections),
+        "name": name,
         "email": email.group(0) if email else None,
-        "skills": _extract_skills(sections),
+        # Never from the name or contact lines: "Ruby Swift" is not a Ruby or Swift skill.
+        "skills": _extract_skills(sections, name or (_name_from_path(resume_path) if resume_path else None)),
         "experience_years": experience_years,
         "skill_years": skill_years,
         "education": education,

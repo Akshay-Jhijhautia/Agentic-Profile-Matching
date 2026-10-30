@@ -62,17 +62,29 @@ def test_three_rounds_review_each_candidate_then_decide_by_rule(run, services):
     assert payload["resume_text"]
 
 
-def test_deep_reviews_can_reorder_the_shortlist(run):
+def test_deep_reviews_can_reorder_the_shortlist(run, services):
     round_one = run(rounds=1)["shortlist"]
-    last_name = round_one[-1].name
+    last = round_one[-1]
+    # The review is blind, so the fake knows the candidate only by their resume.
+    last_resume = services.candidates.blind_text(services.candidates.resolve(last.id))
 
-    def by_name(messages):
+    def by_resume(messages):
         resume = json.loads(messages[1].content)["resume_text"]
-        return fake_review("strong" if resume.startswith(last_name) else "missing")(messages)
+        return fake_review("strong" if resume == last_resume else "missing")(messages)
 
-    final = run(rounds=2, responses={DeepReview: by_name})["shortlist"]
-    assert final[0].name == last_name
+    final = run(rounds=2, responses={DeepReview: by_resume})["shortlist"]
+    assert final[0].name == last.name
     assert all(m.recommendation is None for m in final)  # round 3 did not run
+
+
+def test_the_model_never_sees_who_the_candidates_are(run, services):
+    run(rounds=3)
+    sent = "\n".join(m.content for _, messages in services.model.calls for m in messages)
+    assert _calls(services, DeepReview) and _calls(services, DecisionRationales)
+    for profile in services.candidates.all():
+        for identity in (profile.name, profile.id, profile.metadata["email"]):
+            assert identity.lower() not in sent.lower(), identity
+    assert "Candidate 1" in sent  # how the rationale writer knows them
 
 
 def test_round_one_only_makes_no_deep_calls(run, services):
@@ -128,15 +140,17 @@ def _assessed(services, names: list[str], deep_score: int = 90):
     )
 
 
-def test_rationales_are_mapped_by_id_or_name_and_never_change_the_decision(services):
+def test_rationales_are_mapped_from_labels_to_names_and_never_change_the_decision(services):
     shortlist = _assessed(services, ["John Doe", "Daniel Kim", "Wei Chen"])
+    labels = {m.id: f"Candidate {i}" for i, m in enumerate(shortlist, 1)}
     services.model = FakeChatModel({DecisionRationales: DecisionRationales(rationales=[
-        DecisionRationale(candidate_id="john_doe", rationale="Strong Python."),
-        DecisionRationale(candidate_id="Daniel Kim", rationale="Solid."),
+        DecisionRationale(candidate_id=labels["john_doe"], rationale=f"{labels['john_doe']} has strong Python."),
+        DecisionRationale(candidate_id=labels["daniel_kim"].lower().replace(" ", "_"), rationale="Solid."),
+        DecisionRationale(candidate_id="Candidate 9", rationale="Made up."),  # no such label: dropped
     ])})
     decided = {m.id: m.recommendation for m in screening.decide(services, ROLE, shortlist)}
-    assert decided["john_doe"].rationale == "Strong Python."
-    assert decided["daniel_kim"].rationale == "Solid."  # answered by name
+    assert decided["john_doe"].rationale == "John Doe has strong Python."
+    assert decided["daniel_kim"].rationale == "Solid."  # the label as the model spelled it
     # Left out by the model: the rule's outcome stands as the rationale.
     assert decided["wei_chen"].rationale == decided["wei_chen"].rule
     for match in shortlist:

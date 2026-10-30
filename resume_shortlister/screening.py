@@ -5,7 +5,8 @@
    candidates who pass them all go on. Unlike ``JobMatcher.match`` this covers
    the whole index, not a retrieval pool, so no qualifying candidate is missed.
 2. Deep analysis: an LLM reviews each shortlisted candidate's full resume
-   (the graph runs these in parallel), giving categorical verdicts with
+   (the graph runs these in parallel), blind to who they are (no name, contact
+   details or personal fields; see ``candidates.blind_resume``), giving categorical verdicts with
    verbatim quotes; ``guardrails`` checks them and computes the deep score.
    The shortlist is re-ranked by the final score, which blends the deep score
    with the retrieval score.
@@ -18,10 +19,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Iterable
-from typing import TypeVar
+from collections.abc import Iterable
 
 from . import guardrails, llm, prompts
+from .anonymous import Anonymous
 from .candidates import CandidateProfile
 from .schemas import (
     Assessment,
@@ -33,10 +34,9 @@ from .schemas import (
 )
 from .services import Services
 
-# Shortlist fields the rationale writer and the improvement advisor see per candidate.
-COHORT_FIELDS = {"id", "name", "final_score", "match_score", "passes_must_haves", "assessment", "recommendation"}
-
-T = TypeVar("T")
+# Shortlist fields the rationale writer and the improvement advisor see per candidate
+# (never the id or name: they are anonymous, see ``anonymous``).
+COHORT_FIELDS = {"final_score", "match_score", "passes_must_haves", "assessment", "recommendation"}
 
 
 def rank_matches(matches: Iterable[CandidateMatch]) -> list[CandidateMatch]:
@@ -82,7 +82,7 @@ def assess(services: Services, requirements: Requirements, match: CandidateMatch
     """Round 2 for one candidate: the model reviews the full resume, the guardrails
     check its verdicts and compute the deep score."""
     profile = services.candidates.resolve(match.id)
-    resume_text = services.candidates.resume_text(profile)
+    resume_text = services.candidates.blind_text(profile)
     items = guardrails.review_items(requirements)
     payload = {
         "requirements": guardrails.items_for_prompt(items),
@@ -114,23 +114,13 @@ def apply_assessments(
 # --- round 3 ------------------------------------------------------------------------------------
 
 
-def _cohort_payload(requirements: Requirements, matches: list[CandidateMatch]) -> str:
+def _cohort_payload(requirements: Requirements, matches: list[CandidateMatch], anonymous: Anonymous) -> str:
     candidates = [
-        match.model_dump(include=COHORT_FIELDS) | {"unverified_must_haves": match.unverified}
+        {"candidate_id": anonymous.label(match.id)} | match.model_dump(include=COHORT_FIELDS)
+        | {"unverified_must_haves": match.unverified}
         for match in matches
     ]
     return json.dumps({"requirements": requirements.model_dump(), "candidates": candidates}, ensure_ascii=False)
-
-
-def by_candidate(services: Services, items: Iterable[T], ref: Callable[[T], str]) -> dict[str, T]:
-    """LLM answers keyed by candidate id; the LLM sometimes names a candidate instead,
-    and answers about unknown candidates are dropped."""
-    found = {}
-    for item in items:
-        profile = services.candidates.find(ref(item))
-        if profile is not None:
-            found[profile.id] = item
-    return found
 
 
 def decide(services: Services, requirements: Requirements, shortlisted: list[CandidateMatch]) -> list[CandidateMatch]:
@@ -143,12 +133,14 @@ def decide(services: Services, requirements: Requirements, shortlisted: list[Can
     with_decision = [match for match in decided if match.recommendation is not None]
     if not with_decision:
         return decided
-    payload = _cohort_payload(requirements, with_decision)
+    anonymous = Anonymous(with_decision)
+    payload = _cohort_payload(requirements, with_decision, anonymous)
     result = llm.structured(DecisionRationales, prompts.DECISION_RATIONALES, payload, model=services.model, cache=services.llm_cache)
-    rationales = by_candidate(services, result.rationales, lambda r: r.candidate_id)
+    # Answers about labels the model made up are dropped.
+    rationales = {anonymous.id_of(r.candidate_id): anonymous.named(r.rationale) for r in result.rationales}
     return [
         match.model_copy(update={"recommendation": match.recommendation.model_copy(
-            update={"rationale": rationales[match.id].rationale}
+            update={"rationale": rationales[match.id]}
         )})
         if match.id in rationales and match.recommendation is not None else match
         for match in decided
@@ -162,11 +154,18 @@ def suggest_improvements(
     borderline = [match for match in shortlisted if match.borderline]
     if not borderline:
         return shortlisted
-    payload = _cohort_payload(requirements, borderline)
+    anonymous = Anonymous(borderline)
+    payload = _cohort_payload(requirements, borderline, anonymous)
     result = llm.structured(ImprovementSuggestions, prompts.IMPROVEMENT_SUGGESTIONS, payload, model=services.model, cache=services.llm_cache)
-    suggestions = by_candidate(services, result.candidates, lambda c: c.candidate_id)
+    suggestions = {
+        anonymous.id_of(c.candidate_id): [
+            i.model_copy(update={field: anonymous.named(getattr(i, field)) for field in ("gap", "suggestion", "how_to_verify")})
+            for i in c.improvements
+        ]
+        for c in result.candidates
+    }
     return [
-        match.model_copy(update={"improvements": suggestions[match.id].improvements})
+        match.model_copy(update={"improvements": suggestions[match.id]})
         if match.borderline and match.id in suggestions else match
         for match in shortlisted
     ]

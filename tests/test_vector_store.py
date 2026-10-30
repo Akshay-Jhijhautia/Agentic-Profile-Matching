@@ -96,7 +96,7 @@ def test_index_directory_stores_chunks_with_metadata(rag, resume_dir):
     assert len({chunk.id for chunk in stored}) == len(stored)
     sections = {chunk.metadata["section"] for chunk in stored}
     assert {"Summary", "Skills", "Experience", "Education"} <= sections
-    assert all(chunk.document.startswith("Candidate: ") for chunk in stored)
+    assert all(chunk.document.startswith("Section: ") for chunk in stored)
 
 
 def test_metadata_round_trip(rag, resume_dir):

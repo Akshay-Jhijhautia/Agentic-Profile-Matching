@@ -25,6 +25,13 @@
   change the role in a chat below the shortlist, with each turn's steps,
   suggested follow-ups from the shortlist, and the confirmation card in place
   of the agent's question.
+- **Blind screening**: the model judges anonymous candidates. In the deep
+  review, rationales, improvement suggestions, comparisons and interview
+  questions, it sees "Candidate 1" instead of names and ids, and resumes
+  without name, contact details or personal fields; its answers are mapped
+  back to names. The search no longer embeds or keyword-matches the name or
+  personal details. Folders are re-indexed once, and earlier stored model
+  answers are not reused (the questions changed).
 - **Sessions and settings in the browser**: reopen, start or delete a
   screening; see the chat model, whether its key is set, the embeddings, the
   screening rules, where your data is and how many model answers are stored,
@@ -59,6 +66,8 @@
 
 ### Fixed
 
+- A name that is also a skill counted as one: "Ruby Swift" was credited with
+  Ruby and Swift from her name line, passing must-haves she does not show.
 - Progress notes named the deep-reviewed candidate with part of an internal
   key ("Deep analysis of 3f2a…:alex_lee") instead of their id.
 
