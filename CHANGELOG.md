@@ -48,6 +48,10 @@
 - The terminal chat and the web app share one `Conversation` that turns the
   agent's steps into events.
 - The agent's answers name candidates by name instead of by id.
+- A shorter README (what it is, getting started, how it works in brief,
+  responsible use, limitations). The details moved, unchanged, into guides:
+  `docs/usage.md`, `docs/configuration.md`, `docs/how-it-works.md` and
+  `docs/development.md`; a test checks that every link between them resolves.
 - The browser app saves reports in `~/.resume-shortlister/reports` (unless
   `REPORTS_DIR` is set) instead of the folder the server was started from, and
   `resume-shortlister web` stops at start with the problem when a setting is

@@ -102,7 +102,7 @@ function Details({ settings }: { settings: SettingsView }) {
           {"LLM_PROVIDER=anthropic\nANTHROPIC_API_KEY=...\nSHORTLIST_SIZE=15"}
         </pre>
         <p className="muted">
-          Every setting is listed under Configuration in the README. Version {settings.version}.
+          Every setting is described in docs/configuration.md. Version {settings.version}.
         </p>
       </section>
     </>
