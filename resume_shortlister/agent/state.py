@@ -33,6 +33,7 @@ from ..schemas import (
     Recommendation,
     RequirementEvidence,
     RankingDiff,
+    RiskFlag,
     Requirements,
     ScoreBreakdown,
     SkillRequirement,
@@ -75,7 +76,7 @@ class AgentState(TypedDict, total=False):
 # including nested ones, is registered here.
 STATE_MODELS = (
     Requirements, SkillRequirement, CandidateMatch, MustHaveCheck, ScoreBreakdown, RankingDiff, RankChange,
-    Assessment, RequirementEvidence, Recommendation, Improvement,
+    Assessment, RequirementEvidence, RiskFlag, Recommendation, Improvement,
 )
 
 

@@ -17,6 +17,10 @@ from .markdown import join, or_dash, sentences, table
 from .rag import fs_tools
 from .schemas import COMPONENT_LABELS, DEEP_WEIGHT, CandidateMatch, Requirements
 
+TIMELINE_NOTE = (
+    "Not scored: gaps and short roles have many legitimate causes, so they never lower a "
+    "score. They are listed as things you may want to ask about."
+)
 RUBRIC_NOTE = (
     "The deep-analysis score is computed from the verdicts below by a fixed rubric: must-haves "
     f"{guardrails.MUST_SHARE:.0%} and nice-to-haves {1 - guardrails.MUST_SHARE:.0%}, each scored "
@@ -158,6 +162,8 @@ def candidate_report(match: CandidateMatch, requirements: Requirements) -> str:
         lines += ["", f"## {title}", "", *([f"- {item}" for item in items] or ["- none found"])]
     if match.assessment is not None and match.assessment.risk_flags:
         lines += ["", "## Risk flags", "", *[f"- {flag.label}" for flag in match.assessment.risk_flags]]
+    if match.assessment is not None and match.assessment.timeline:
+        lines += ["", "## Timeline (not scored)", "", TIMELINE_NOTE, "", *[f"- {note}" for note in match.assessment.timeline]]
     if match.improvements:
         rows = [[i.gap, i.suggestion, i.how_to_verify] for i in match.improvements]
         lines += ["", "## Improvement suggestions", "", *table(["Gap", "Suggestion", "How to verify"], rows)]

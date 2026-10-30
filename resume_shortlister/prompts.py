@@ -181,16 +181,25 @@ review of one full resume against the role. The input is JSON with the \
 requirements to judge (each with an id such as M1 or N2), the candidate's \
 first-round facts and the resume text.
 
-- requirements: one entry per requirement id. strong = clearly demonstrated \
-(for a years requirement, the years are evidenced); partial = present but \
-thin, short or indirect; missing = not on the resume. evidence_quote must be \
-copied verbatim from the resume (one short phrase or sentence, no ellipses); \
-leave it empty for missing. A verdict whose quote is not in the resume is \
-discarded, so never paraphrase.
+- requirements: one entry per requirement id, with the strongest evidence. \
+strong = used in a role or project the resume describes (quote the line that \
+names it; for a years requirement, the years are evidenced); partial = only \
+listed or claimed (a skills list, the summary, a certificate) or indirect; \
+missing = not on the resume. evidence_quote must be copied verbatim from the \
+resume (one short phrase or sentence, no ellipses), preferring a line from a \
+role or project over a skills list; leave it empty for missing. A verdict \
+whose quote is not in the resume is discarded, so never paraphrase.
 - strengths and gaps: specific to this role, citing companies, projects, results.
-- risk_flags: short tenures, unexplained gaps, contradictions between sections, \
-claims without supporting experience. Rate each low, medium or high. Empty \
-when there are none.
+- risk_flags: whether the resume's own claims hold together, in three kinds, \
+each at most once and with a verbatim evidence_quote: claim_mismatch (a stated \
+figure such as years of experience or seniority that the dated roles do not \
+support), contradiction (parts that cannot both be true, such as overlapping \
+full-time roles or conflicting dates or titles) and repeated_content (the same \
+achievement repeated across different roles). Never flag employment gaps or \
+short tenures (they have many legitimate causes and are noted separately), a \
+skill without dated evidence (the requirement verdicts already judge it), or a \
+date as being in the future (you do not know today's date). Empty when the \
+claims hold together.
 - summary: two sentences on overall fit.
 
 Do not score the candidate; scores are computed from your verdicts. Judge only \

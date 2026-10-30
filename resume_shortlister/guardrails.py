@@ -5,9 +5,13 @@ quotes. Code then:
 
 1. checks every quote against the resume text: a verdict whose quote is not
    in the resume is downgraded (no credit for invented evidence);
-2. bounds verdicts by the facts round 1 measured: a must-have measured as met
-   counts as strong, an unverified one (listed, years unclear) as exactly partial;
-3. adds code-detected risks, such as text that tries to instruct the model;
+2. sets a skill's verdict by where its evidence is: named in a role or project
+   (code finds the line) is strong, only listed or claimed is partial; then bounds verdicts by the
+   facts round 1 measured: a must-have measured as met counts as strong, an
+   unverified one (listed, years unclear) as exactly partial;
+3. keeps the model's risk flags only when their quote is in the resume, one per
+   kind, at the severity code gives that kind (``RISK_SEVERITY``), and adds
+   code-detected risks, such as text that tries to instruct the model;
 4. computes the deep score from a fixed rubric;
 
 and round 3 decides whom to recommend for interview with a fixed rule, leaving the model only
@@ -21,6 +25,7 @@ import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 
+from .rag import resume_rag, skills_vocab
 from .rag.job_matcher import requirement_label
 from .schemas import (
     Assessment,
@@ -30,7 +35,9 @@ from .schemas import (
     Recommendation,
     RequirementEvidence,
     Requirements,
+    ReviewRisk,
     RiskFlag,
+    RiskKind,
     Verdict,
 )
 
@@ -42,6 +49,9 @@ VERDICT_VALUE: dict[Verdict, float] = {"strong": 1.0, "partial": 0.5, "missing":
 MUST_SHARE = 0.7
 RISK_PENALTY = {"low": 2, "medium": 5, "high": 10}
 MAX_RISK_PENALTY = 20
+# Each kind of risk the model may raise, at the severity code gives it. The model only says
+# whether a kind applies; only code-detected risks can be high (and block an interview).
+RISK_SEVERITY: dict[RiskKind, str] = {"claim_mismatch": "medium", "contradiction": "medium", "repeated_content": "low"}
 
 # --- decision rule -------------------------------------------------------------------------------------
 
@@ -106,18 +116,77 @@ def _normalise(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[\"'“”‘’…•▪◦·]|\.{3}", " ", text.lower())).strip()
 
 
+def _found(quote: str, text: str) -> float:
+    """How much of ``quote`` (normalised) appears in one piece in ``text`` (normalised), 0..1."""
+    if quote in text:
+        return 1.0
+    match = SequenceMatcher(None, quote, text, autojunk=False).find_longest_match(0, len(quote), 0, len(text))
+    return match.size / len(quote)
+
+
 def grounded(quote: str, resume_text: str) -> bool:
     """Whether ``quote`` appears in the resume, allowing small differences in punctuation."""
-    quote, resume = _normalise(quote), _normalise(resume_text)
-    if len(quote) < MIN_QUOTE_CHARS:
-        return False
-    if quote in resume:
-        return True
-    match = SequenceMatcher(None, quote, resume, autojunk=False).find_longest_match(0, len(quote), 0, len(resume))
-    return match.size / len(quote) >= MIN_QUOTE_MATCH
+    quote = _normalise(quote)
+    return len(quote) >= MIN_QUOTE_CHARS and _found(quote, _normalise(resume_text)) >= MIN_QUOTE_MATCH
 
 
-# --- 2. bounds from round 1 -----------------------------------------------------------------------------
+# --- 2. what the evidence shows -----------------------------------------------------------------------------
+
+# Sections that describe work done. Evidence anywhere else (a skills list, a summary, a
+# certificate) shows a skill is claimed, not used.
+WORK_SECTIONS = {"Experience", "Projects"}
+
+
+def quote_section(quote: str, resume_text: str) -> str | None:
+    """The section a grounded quote comes from; None when the resume has no sections."""
+    sections = resume_rag.split_sections(resume_text)
+    if set(sections) <= {resume_rag.GENERAL_SECTION}:
+        return None
+    quote = _normalise(quote)
+    return max(sections, key=lambda name: _found(quote, _normalise(sections[name])))
+
+
+def names_skill(quote: str, skill: str) -> bool:
+    """Whether ``quote`` names ``skill``, by any of its spellings or a skill implying it
+    (Django: Python)."""
+    found = {s.lower() for s in skills_vocab.with_implied(skills_vocab.find_skills(quote))}
+    return skill.lower() in found or bool(re.search(rf"(?<!\w){re.escape(skill)}(?!\w)", quote, re.IGNORECASE))
+
+
+def work_line(skill: str, resume_text: str) -> str | None:
+    """The first line of a role or project that names ``skill``, if any."""
+    for name, body in resume_rag.split_sections(resume_text).items():
+        if name in WORK_SECTIONS:
+            for line in body.splitlines():
+                if names_skill(line, skill):
+                    return line.strip(" \t-•*▪◦·")
+    return None
+
+
+def verdict_from_evidence(
+    verdict: Verdict, item: ReviewItem, quote: str, resume_text: str
+) -> tuple[Verdict, str, str]:
+    """A skill's verdict and evidence by where the evidence is: named in a role or project is
+    strong (code finds the line, whichever line the model quoted), only listed or claimed is
+    partial. ``(verdict, quote, note)``; the note says why when the verdict changed.
+
+    The model may call the same evidence strong in one run and partial in the next, or quote
+    the skills list in one run and a role in the next; this gives every run the same answer.
+    """
+    if item.skill is None:
+        return verdict, quote, ""
+    used = work_line(item.skill, resume_text)
+    if used:
+        quoted_work = quote and quote_section(quote, resume_text) in WORK_SECTIONS and names_skill(quote, item.skill)
+        return "strong", quote if quoted_work else used, "" if verdict == "strong" else "used in a role or project"
+    section = quote_section(quote, resume_text) if quote else None
+    if verdict == "missing" or section is None:
+        return verdict, quote, ""
+    reason = "the quoted work does not name it" if section in WORK_SECTIONS else f"only listed or claimed ({section.lower()})"
+    return "partial", quote, "" if verdict == "partial" else reason
+
+
+# --- bounds from round 1 -----------------------------------------------------------------------------------
 
 
 def bound_by_check(verdict: Verdict, item: ReviewItem, check: MustHaveCheck | None, listed: bool) -> tuple[Verdict, str]:
@@ -145,7 +214,18 @@ def injection_flags(resume_text: str) -> list[RiskFlag]:
     found = sorted({m.group(0).lower() for m in INJECTION_RE.finditer(resume_text)})
     if not found:
         return []
-    return [RiskFlag(flag=f"Resume contains text aimed at the screening model: {', '.join(found)}", severity="high")]
+    flag = f"Resume contains text aimed at the screening model: {', '.join(found)}"
+    return [RiskFlag(flag=flag, severity="high", kind="prompt_injection")]
+
+
+def review_risks(risks: list[ReviewRisk], resume_text: str) -> list[RiskFlag]:
+    """The model's risks that count: quoted from the resume, the first of each kind, at the
+    kind's severity. How many ways the model words one concern no longer changes the score."""
+    kept: dict[str, RiskFlag] = {}
+    for risk in risks:
+        if risk.kind not in kept and grounded(risk.evidence_quote, resume_text):
+            kept[risk.kind] = RiskFlag(flag=risk.flag, severity=RISK_SEVERITY[risk.kind], kind=risk.kind)
+    return list(kept.values())
 
 
 # --- 4. rubric ---------------------------------------------------------------------------------------------
@@ -183,8 +263,11 @@ def build_assessment(
         else:
             verdict, quote = reviewed.verdict, reviewed.evidence_quote.strip()
             if verdict != "missing" and not grounded(quote, resume_text):
-                verdict = DOWNGRADE[verdict]
+                verdict, quote = DOWNGRADE[verdict], ""
                 notes.append("quoted evidence not found in the resume")
+        verdict, quote, note = verdict_from_evidence(verdict, item, quote, resume_text)
+        if note:
+            notes.append(note)
         listed = bool(item.skill and item.skill.lower() in skills)
         check = checks.get(item.check_label)
         verdict, note = bound_by_check(verdict, item, check, listed)
@@ -195,7 +278,7 @@ def build_assessment(
             evidence=quote or (check.detail if check else ""),
             note="; ".join(notes),
         ))
-    risk_flags = [*review.risk_flags, *injection_flags(resume_text)]
+    risk_flags = [*review_risks(review.risk_flags, resume_text), *injection_flags(resume_text)]
     return Assessment(
         requirement_evidence=evidence, strengths=review.strengths, gaps=review.gaps,
         risk_flags=risk_flags, deep_score=rubric_score(evidence, risk_flags), summary=review.summary,

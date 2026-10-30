@@ -11,7 +11,14 @@ from pydantic import BaseModel
 
 from ..conversation import Conversation, Event
 from ..agent.routing import LOAD_COMMANDS
-from ..explainability import RUBRIC_NOTE, candidate_report, must_have_cell, score_lines, strengths_and_gaps
+from ..explainability import (
+    RUBRIC_NOTE,
+    TIMELINE_NOTE,
+    candidate_report,
+    must_have_cell,
+    score_lines,
+    strengths_and_gaps,
+)
 from ..pools import split_paths
 from ..schemas import (
     CandidateMatch,
@@ -209,6 +216,8 @@ class CandidateDetail(BaseModel):
     strengths: list[str]
     gaps: list[str]
     risk_flags: list[RiskFlag]
+    timeline: list[str]  # gaps and short roles, from the dates: never scored
+    timeline_note: str  # why they are not scored
     improvements: list[Improvement]  # what would make a borderline candidate a clear interview
     retrieval_reasoning: str
     excerpts: list[str]
@@ -227,7 +236,8 @@ class CandidateDetail(BaseModel):
             score_components=[ScoreComponent(**vars(line)) for line in score_lines(match)],
             rubric=RUBRIC_NOTE if assessment else None, must_have_checks=match.must_have_checks,
             evidence=assessment.requirement_evidence if assessment else [], strengths=strengths, gaps=gaps,
-            risk_flags=assessment.risk_flags if assessment else [], improvements=match.improvements or [],
+            risk_flags=assessment.risk_flags if assessment else [], timeline=assessment.timeline if assessment else [],
+            timeline_note=TIMELINE_NOTE, improvements=match.improvements or [],
             retrieval_reasoning=match.reasoning, excerpts=match.excerpts,
             report=candidate_report(match, requirements),
         )

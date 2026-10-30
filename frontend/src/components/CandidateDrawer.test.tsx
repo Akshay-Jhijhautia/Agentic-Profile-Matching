@@ -28,7 +28,9 @@ const detail: CandidateDetail = {
   ],
   strengths: ["Led a migration"],
   gaps: [],
-  risk_flags: [{ flag: "Short last tenure", severity: "medium" }],
+  risk_flags: [{ flag: "Claims 8 years; the dated roles cover 5", severity: "medium", kind: "claim_mismatch" }],
+  timeline: ["8 months between Developer, Contoso (until Mar 2022) and Engineer, Fabrikam (from Dec 2022)"],
+  timeline_note: "Not scored: gaps and short roles have many legitimate causes.",
   improvements: [],
   retrieval_reasoning: "Strong match.",
   excerpts: ["[Skills] React, TypeScript"],
@@ -62,6 +64,8 @@ test("the detail shows the recommendation, the score and the evidence behind it"
   expect(screen.getByText("Not shown on the resume.")).toBeTruthy();
   expect(screen.getByText("strong").className).toBe("ok");
   expect(screen.getByText("None found.")).toBeTruthy(); // no gaps
+  expect(screen.getByText(/8 months between Developer, Contoso/)).toBeTruthy();
+  expect(screen.getByText(/^Not scored/)).toBeTruthy();
 });
 
 test("interview questions are written on request", async () => {

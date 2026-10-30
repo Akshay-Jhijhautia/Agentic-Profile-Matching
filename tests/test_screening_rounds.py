@@ -44,9 +44,11 @@ def test_three_rounds_review_each_candidate_then_decide_by_rule(run, services):
     assert len(_calls(services, DeepReview)) == 4  # one deep review per candidate (in parallel)
     assert len(_calls(services, DecisionRationales)) == 1  # one call explains every decision
     for match in shortlist:
-        # Every verdict is strong (grounded quotes), no risks: the rubric gives 100.
-        assert match.assessment.deep_score == 100
-        assert match.final_score == round(DEEP_WEIGHT * 100 + (1 - DEEP_WEIGHT) * match.match_score)
+        # The model said strong everywhere; code kept it where the quote is work naming the
+        # skill, and the rubric scored the verdicts that count.
+        assessment = match.assessment
+        assert assessment.deep_score == guardrails.rubric_score(assessment.requirement_evidence, assessment.risk_flags)
+        assert match.final_score == round(DEEP_WEIGHT * assessment.deep_score + (1 - DEEP_WEIGHT) * match.match_score)
         rule = guardrails.decide(match)
         assert (match.recommendation.decision, match.recommendation.rule) == (rule.decision, rule.rule)
         assert match.recommendation.rationale == f"Final score {match.final_score}."
@@ -64,16 +66,18 @@ def test_three_rounds_review_each_candidate_then_decide_by_rule(run, services):
 
 def test_deep_reviews_can_reorder_the_shortlist(run, services):
     round_one = run(rounds=1)["shortlist"]
-    last = round_one[-1]
-    # The review is blind, so the fake knows the candidate only by their resume.
-    last_resume = services.candidates.blind_text(services.candidates.resolve(last.id))
+    second, last = round_one[1], round_one[-1]
+    # The review is blind, so the fake knows the candidate only by their resume: it raises
+    # every kind of risk for the second, and the last overtakes them.
+    risky = services.candidates.blind_text(services.candidates.resolve(second.id))
 
     def by_resume(messages):
         resume = json.loads(messages[1].content)["resume_text"]
-        return fake_review("strong" if resume == last_resume else "missing")(messages)
+        return fake_review("strong", tuple(guardrails.RISK_SEVERITY) if resume == risky else ())(messages)
 
     final = run(rounds=2, responses={DeepReview: by_resume})["shortlist"]
-    assert final[0].name == last.name
+    order = [m.id for m in final]
+    assert order.index(last.id) < order.index(second.id)
     assert all(m.recommendation is None for m in final)  # round 3 did not run
 
 

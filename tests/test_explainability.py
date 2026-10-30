@@ -187,14 +187,15 @@ def test_report_tool_errors(report_tool, state, error):
 # --- end to end ---------------------------------------------------------------------------------------------
 
 
-def _screen(services, verdict: str, **settings):
-    services.model = FakeChatModel({Requirements: ROLE, **SCREENING_RESPONSES, DeepReview: fake_review(verdict)})
+def _screen(services, verdict: str, role: Requirements = ROLE, **settings):
+    services.model = FakeChatModel({Requirements: role, **SCREENING_RESPONSES, DeepReview: fake_review(verdict)})
     services.settings = dataclasses.replace(services.settings, shortlist_size=3, **settings)
     return matching_agent.screen(services, "Python backend engineer")
 
 
 def test_pipeline_suggests_improvements_and_saves_reports(services):
-    state = _screen(services, verdict="partial")  # deep 50: final scores land in the borderline band
+    # Nice-to-haves nobody has: the deep score is the must-haves' 70, so finals are borderline.
+    state = _screen(services, verdict="missing", role=ROLE.model_copy(update={"nice_to_have": ["Rust", "Elixir"]}))
     borderline = [m for m in state["shortlist"] if m.borderline]
     assert borderline and all(m.improvements for m in borderline)
     assert sum(c is ImprovementSuggestions for c, _ in services.model.calls) == 1
@@ -215,3 +216,12 @@ def test_pipeline_without_saving(services):
 def test_sentences_join_sentence_like_items():
     assert sentences(["Strong React.", " Led a team. ", ""]) == "Strong React; Led a team."
     assert sentences([]) == "none"
+
+
+def test_the_report_lists_timeline_notes_as_not_scored(john):
+    record = full_record(john)
+    record = record.model_copy(update={"assessment": record.assessment.model_copy(
+        update={"timeline": ["8 months between A and B"]})})
+    report = explainability.candidate_report(record, ROLE)
+    assert "## Timeline (not scored)" in report and "- 8 months between A and B" in report
+    assert record.final_score == full_record(john).final_score  # the note changes nothing

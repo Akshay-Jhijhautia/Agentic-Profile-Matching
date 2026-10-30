@@ -242,6 +242,10 @@ export interface components {
             strengths: string[];
             /** Summary */
             summary: string | null;
+            /** Timeline */
+            timeline: string[];
+            /** Timeline Note */
+            timeline_note: string;
         };
         /**
          * CandidateRow
@@ -420,16 +424,21 @@ export interface components {
             /** Role Title */
             role_title: string;
         };
-        /** RiskFlag */
+        /**
+         * RiskFlag
+         * @description A risk that counts: raised by the model (with a quote code found in the resume) or by
+         *     code itself (``prompt_injection``), with the severity its kind carries.
+         */
         RiskFlag: {
-            /**
-             * Flag
-             * @description The concern, specific to this resume.
-             */
+            /** Flag */
             flag: string;
             /**
+             * Kind
+             * @default other
+             */
+            kind: string;
+            /**
              * Severity
-             * @description high: likely disqualifying (e.g. fabricated-looking claims); medium: needs checking (gaps, contradictions); low: minor.
              * @enum {string}
              */
             severity: "low" | "medium" | "high";

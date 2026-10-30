@@ -32,6 +32,18 @@
   back to names. The search no longer embeds or keyword-matches the name or
   personal details. Folders are re-indexed once, and earlier stored model
   answers are not reused (the questions changed).
+- **Stable deep reviews.** Where a skill's evidence is decides its verdict:
+  named in a role or project is strong (code finds the line), only listed or
+  claimed is partial. Risk flags come in three kinds (a stated figure the dates
+  do not support, a contradiction, repeated content), each needing a quote
+  found in the resume, counted once, at the severity of its kind; only
+  code-detected risks are high. Over 5 fresh runs on three job descriptions,
+  the average deep-score spread fell from 9–15 points to under 4, and interview
+  recommendations agreed in every run.
+- **Timeline notes, not scored**: gaps of 6 months or more between roles and
+  short completed roles (not internships or contracts) are computed from the
+  dates and listed in the candidate's report and detail, for the recruiter to
+  ask about. They no longer lower a score.
 - **Sessions and settings in the browser**: reopen, start or delete a
   screening; see the chat model, whether its key is set, the embeddings, the
   screening rules, where your data is and how many model answers are stored,

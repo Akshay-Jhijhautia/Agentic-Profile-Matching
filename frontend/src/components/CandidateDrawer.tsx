@@ -172,6 +172,18 @@ function Detail({ detail, prepareQuestions }: { detail: CandidateDetail; prepare
         </section>
       )}
 
+      {detail.timeline.length > 0 && (
+        <section>
+          <h3>Timeline (not scored)</h3>
+          <ul>
+            {detail.timeline.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+          <p className="hint">{detail.timeline_note}</p>
+        </section>
+      )}
+
       {detail.improvements.length > 0 && (
         <section>
           <h3>What would make this a clear interview</h3>

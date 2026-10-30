@@ -160,8 +160,11 @@ run (`resume_shortlister/guardrails.py`):
 | Guardrail | What it prevents |
 | --- | --- |
 | **Rubric scoring.** The model returns only categorical verdicts (strong / partial / missing). Code computes the deep score: must-haves 70%, nice-to-haves 30%; strong 1, partial 0.5, missing 0; minus risk penalties (low 2, medium 5, high 10, at most 20) | Free-form scores drifting between runs and models |
-| **Evidence grounding.** Every verdict cites a verbatim quote, and code checks it is in the resume. A quote that isn't downgrades the verdict | Credit for invented experience |
+| **Evidence grounding.** Every verdict cites a verbatim quote, and code checks it is in the resume. A quote that isn't downgrades the verdict and is never shown as evidence | Credit for invented experience |
+| **Evidence decides a skill's verdict.** A skill named in a role or project is strong (code finds the line, whichever line the model quoted); a skill only listed or claimed (skills list, summary, certificate) is partial; missing only when the resume shows neither | The same evidence called strong in one run and partial in the next |
 | **Facts bound verdicts.** A must-have that round 1 *measured* as met (years, experience, degree) counts as strong; an unverified one counts as exactly partial; a listed skill can't be missing | The model contradicting what code measured |
+| **Risks by kind.** The model may raise three kinds of risk, about whether the resume's claims hold together: a stated figure the dated roles do not support (medium), a contradiction (medium), repeated content (low). Each needs a quote found in the resume, counts once, and takes its severity from its kind; only code-detected risks (prompt injection) are high | Risk lists that grow or shrink from run to run, and the model alone blocking an interview |
+| **Gaps are not risks.** Gaps between roles (6 months or more) and short completed roles are computed from the dates and listed under "Timeline (not scored)", never penalised: they have many legitimate causes | Penalising caregiving, illness or layoffs, and a large source of run-to-run variance |
 | **Decision rule.** Recommend an interview when final ≥ 75, no must-have missing and no high-severity risk. Confidence comes from the margin and evidence quality. The model only explains | Different recommendations for the same evidence |
 | **Blind screening.** Every model call that judges or compares candidates gets them anonymous: labels instead of names and ids, resumes without name, contact details or personal fields ([below](#blind-screening)) | Who the candidate is influencing the judgement |
 | **Stable search text.** The semantic query is rendered only from the structured requirements, never from model-written prose | Rewording reordering the shortlist |
@@ -173,17 +176,22 @@ Every adjustment is visible. The detailed report has a "guardrail note" next
 to any verdict code changed, and each recommendation shows the rule that
 produced it.
 
-**Measured effect** (`scripts/stability_check.py`, 3 identical runs, React request):
+**Measured effect** (`scripts/stability_check.py`, gpt-5.6-terra, 5 identical
+runs per job description, 100 sample resumes, stored answers off). "Before" is
+blind screening with the earlier rubric and free-form risk flags; "after" adds
+evidence-decided skill verdicts and risks by kind:
 
-| | before guardrails | gpt-5.6-terra | gpt-6-luna |
+| Job description | Deep-score spread, mean (max) | Same interview recommendations | Ranking agreement (Kendall tau) |
 | --- | --- | --- | --- |
-| Deep-score spread for one candidate across runs | up to 24 points | mean 6.5 | mean 2.1 |
-| Same top 10 across runs | – | 100% | 100% |
-| Same interview recommendations across runs | – | 100% | 100% |
+| Frontend (React) | 12.7 (22) → **1.7 (5)** | 33% → **100%** | 0.73 → **1.00** |
+| Full-stack | 8.8 (15) → **0 (0)** | 100% → **100%** | 0.80 → **1.00** |
+| Data engineer | 14.6 (27) → **3.3 (7)** | 86% → **100%** | 0.50 → **0.83** |
 
-Across both models on the frontend JD, the ranking was identical (Kendall tau
-1.0) and 2 of 3 interview recommendations matched. The candidate sitting at the threshold
-differed.
+What still varies is whether the model raises one risk of a kind, worth at
+most 3 points of final score. An earlier measurement across two models
+(gpt-5.6-terra and gpt-6-luna, before these two guardrails) ranked the
+frontend shortlist identically and matched 2 of 3 recommendations; it has not
+been repeated since.
 
 ```bash
 python -m scripts.generate_sample_resumes /tmp/sample_resumes     # see development.md: Sample data
@@ -227,11 +235,10 @@ learns it (`rag/personal_data.py`, `candidates.blind_resume`, `anonymous.py`):
   so the calibration holds.
 - *Screening* (`scripts/stability_check.py`, frontend JD, 5 runs each,
   gpt-5.6-terra): the same ranking in every run, blind or not, and the same
-  decision agreement. Requirement verdicts were identical across runs; what
-  varies is how many risk flags the model lists. The candidate at the
-  threshold averaged 64.7 blind against 62.4 with names over 15 deep reviews
-  each, often enough to cross the interview threshold, which is where a
-  recruiter's second look belongs anyway.
+  decision agreement. The candidate at the threshold averaged 64.7 blind
+  against 62.4 with names over 15 deep reviews each, a difference that came
+  from how many risk flags the model listed; risks by kind (see Guardrails)
+  have since made that count stable.
 - *Leakage*: across a live screening, comparison and interview questions,
   none of the 100 candidates' names, ids or emails appeared in anything sent
   to the model. A test checks this on every screening.

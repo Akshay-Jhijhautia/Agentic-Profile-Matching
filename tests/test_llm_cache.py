@@ -123,9 +123,10 @@ def test_model_identity_names_what_changes_answers():
 
 
 def _changing_reviews():
-    """A model whose deep reviews change from run to run: all strong in the first, all
-    partial in the second (it is shared by both runs)."""
-    verdicts = itertools.chain(itertools.repeat("strong", 3), itertools.repeat("partial"))
+    """A model whose deep reviews change from run to run: everything shown in the first,
+    nothing in the second (it is shared by both runs). Strong or partial for the same quote
+    would not do: code sets those from where the evidence is."""
+    verdicts = itertools.chain(itertools.repeat("strong", 3), itertools.repeat("missing"))
     return lambda messages: fake_review(next(verdicts))(messages)
 
 

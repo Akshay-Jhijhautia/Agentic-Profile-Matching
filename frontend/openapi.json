@@ -184,6 +184,17 @@
               }
             ],
             "title": "Summary"
+          },
+          "timeline": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Timeline",
+            "type": "array"
+          },
+          "timeline_note": {
+            "title": "Timeline Note",
+            "type": "string"
           }
         },
         "required": [
@@ -207,6 +218,8 @@
           "strengths",
           "gaps",
           "risk_flags",
+          "timeline",
+          "timeline_note",
           "improvements",
           "retrieval_reasoning",
           "excerpts",
@@ -635,14 +648,18 @@
         "type": "object"
       },
       "RiskFlag": {
+        "description": "A risk that counts: raised by the model (with a quote code found in the resume) or by\ncode itself (``prompt_injection``), with the severity its kind carries.",
         "properties": {
           "flag": {
-            "description": "The concern, specific to this resume.",
             "title": "Flag",
             "type": "string"
           },
+          "kind": {
+            "default": "other",
+            "title": "Kind",
+            "type": "string"
+          },
           "severity": {
-            "description": "high: likely disqualifying (e.g. fabricated-looking claims); medium: needs checking (gaps, contradictions); low: minor.",
             "enum": [
               "low",
               "medium",

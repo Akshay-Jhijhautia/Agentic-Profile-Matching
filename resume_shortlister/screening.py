@@ -20,8 +20,9 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterable
+from datetime import date
 
-from . import guardrails, llm, prompts
+from . import guardrails, llm, prompts, timeline
 from .anonymous import Anonymous
 from .candidates import CandidateProfile
 from .schemas import (
@@ -95,7 +96,10 @@ def assess(services: Services, requirements: Requirements, match: CandidateMatch
         DeepReview, prompts.DEEP_ASSESSMENT, json.dumps(payload, ensure_ascii=False), model=services.model,
         cache=services.llm_cache,
     )
-    return guardrails.build_assessment(review, items, match, resume_text)
+    assessment = guardrails.build_assessment(review, items, match, resume_text)
+    # For the recruiter, from the resume as written: never shown to the model, never scored.
+    notes = timeline.notes(services.candidates.resume_text(profile, None), date.today())
+    return assessment.model_copy(update={"timeline": notes})
 
 
 def apply_assessments(

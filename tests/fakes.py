@@ -19,7 +19,7 @@ from resume_shortlister.schemas import (
     ImprovementSuggestions,
     RequirementEvidence,
     RequirementReview,
-    RiskFlag,
+    ReviewRisk,
 )
 
 
@@ -75,21 +75,32 @@ def fake_assessment(deep_score: int = 80) -> Assessment:
     )
 
 
-def fake_review(verdict: str = "strong", risk_flags: list[RiskFlag] | None = None) -> Callable[[list], DeepReview]:
+def _best_quote(payload: dict, item: dict) -> str:
+    """A bullet naming the requirement (work done), else any line naming it, else the first
+    line long enough to be evidence."""
+    lines = [line.strip() for line in payload["resume_text"].splitlines() if len(line.strip()) >= 30]
+    name = item["requirement"].split(" (")[0].lower()
+    naming = [line for line in lines if name in line.lower()]
+    bullets = [line for line in naming if line[:1] in "-•"]
+    return (bullets or naming or lines)[0]
+
+
+def fake_review(verdict: str = "strong", risk_kinds: tuple[str, ...] = ()) -> Callable[[list], DeepReview]:
     """A model answering ``verdict`` for every requirement it is asked about, quoting the
-    resume's first line long enough to be evidence (it is really in the resume, so the
-    evidence check accepts it)."""
+    resume as a careful reviewer would (``_best_quote``), so the evidence checks accept it,
+    and raising one risk of each of ``risk_kinds`` with a quote from the resume."""
 
     def answer(messages: list) -> DeepReview:
         payload = json.loads(messages[1].content)
-        quote = next(line for line in payload["resume_text"].splitlines() if len(line.strip()) >= 30)
         return DeepReview(
             requirements=[
                 RequirementReview(requirement_id=item["id"], verdict=verdict,
-                                  evidence_quote="" if verdict == "missing" else quote)
+                                  evidence_quote="" if verdict == "missing" else _best_quote(payload, item))
                 for item in payload["requirements"]
             ],
-            strengths=["Shipped production APIs"], gaps=["No GraphQL"], risk_flags=risk_flags or [],
+            strengths=["Shipped production APIs"], gaps=["No GraphQL"],
+            risk_flags=[ReviewRisk(kind=kind, flag=f"{kind} concern", evidence_quote=_best_quote(payload, {"requirement": ""}))
+                        for kind in risk_kinds],
             summary="Solid backend engineer.",
         )
 

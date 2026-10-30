@@ -466,8 +466,39 @@ def _month_index(token: str, today: date, is_end: bool) -> int | None:
     return year * 12 + month - 1 + (1 if is_end else 0)
 
 
-def _role_intervals(experience: str, today: date) -> list[tuple[int, int, str]]:
-    """``(start, end, entry_text)`` per dated role, in months; undated entries are ignored."""
+_ONGOING = {"present", "current", "now"}
+
+
+@dataclass(frozen=True)
+class DatedRole:
+    """One role of the Experience section with its dates, in months since year 0."""
+
+    start: int
+    end: int  # exclusive; today for a current role
+    entry: str  # the role's text; its first line is the heading with the dates
+    start_text: str  # the dates as written: "Mar 2020", "2019", "Present"
+    end_text: str
+    start_month_known: bool  # False for a year alone
+    end_month_known: bool
+
+    @property
+    def current(self) -> bool:
+        return self.end_text.strip().lower() in _ONGOING
+
+    @property
+    def title(self) -> str:
+        """The heading without its dates: "Backend Developer, Contoso"."""
+        return DATE_RANGE_RE.sub("", self.entry.splitlines()[0]).strip(" \t()[]-–—,|")
+
+
+def _month_known(token: str) -> bool:
+    token = token.strip().lower()
+    parts = _DATE_PARTS_RE.search(token)
+    return token in _ONGOING or bool(parts and (parts["num"] or (parts["mon"] or "")[:3] in _MONTHS))
+
+
+def dated_roles(experience: str, today: date) -> list[DatedRole]:
+    """Every role in ``experience`` whose heading has a date range; undated entries are ignored."""
     roles = []
     now = today.year * 12 + today.month
     for entry in _split_entries(experience):
@@ -480,8 +511,14 @@ def _role_intervals(experience: str, today: date) -> list[tuple[int, int, str]]:
             continue
         end = min(end, now)
         if end > start:
-            roles.append((start, end, entry))
+            roles.append(DatedRole(start, end, entry, dates["start"], dates["end"],
+                                   _month_known(dates["start"]), _month_known(dates["end"])))
     return roles
+
+
+def _role_intervals(experience: str, today: date) -> list[tuple[int, int, str]]:
+    """``(start, end, entry_text)`` per dated role, in months."""
+    return [(role.start, role.end, role.entry) for role in dated_roles(experience, today)]
 
 
 def _merged_years(intervals: list[tuple[int, int]]) -> float:

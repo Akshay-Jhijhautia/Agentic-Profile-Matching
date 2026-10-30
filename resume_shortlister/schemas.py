@@ -208,12 +208,32 @@ class RequirementReview(BaseModel):
     )
 
 
-class RiskFlag(BaseModel):
-    flag: str = Field(description="The concern, specific to this resume.")
-    severity: Severity = Field(
-        description="high: likely disqualifying (e.g. fabricated-looking claims); medium: needs "
-        "checking (gaps, contradictions); low: minor."
+# The risks the model may raise: whether the resume's own claims hold together. Gaps and
+# short tenures are not risks (``timeline`` notes them, unscored), nor are skills without
+# dated evidence (their requirement verdict already counts that).
+RiskKind = Literal["claim_mismatch", "contradiction", "repeated_content"]
+
+
+class ReviewRisk(BaseModel):
+    """A risk as the model raises it: a kind and a quote; code sets its severity."""
+
+    kind: RiskKind = Field(
+        description="claim_mismatch: a figure the resume states (years of experience, seniority, team "
+        "or scale) that its own dated roles do not support; contradiction: parts of the resume that "
+        "cannot both be true (overlapping full-time roles, conflicting dates, titles or facts); "
+        "repeated_content: the same achievement repeated across different roles, as if copied."
     )
+    flag: str = Field(description="The concern in one sentence, specific to this resume.")
+    evidence_quote: str = Field(description="A short verbatim quote from the resume showing it.")
+
+
+class RiskFlag(BaseModel):
+    """A risk that counts: raised by the model (with a quote code found in the resume) or by
+    code itself (``prompt_injection``), with the severity its kind carries."""
+
+    flag: str
+    severity: Severity
+    kind: str = "other"  # a ``RiskKind`` or "prompt_injection"; "other" for sessions saved before 1.2
 
     @property
     def label(self) -> str:
@@ -226,8 +246,8 @@ class DeepReview(BaseModel):
     requirements: list[RequirementReview] = Field(description="One entry per requirement id in the input.")
     strengths: list[str]
     gaps: list[str]
-    risk_flags: list[RiskFlag] = Field(
-        description="Short tenures, unexplained gaps, contradictions, claims without supporting experience."
+    risk_flags: list[ReviewRisk] = Field(
+        description="At most one per kind; empty when the resume's claims hold together."
     )
     summary: str = Field(description="Two sentences on overall fit.")
 
@@ -251,6 +271,9 @@ class Assessment(BaseModel):
     risk_flags: list[RiskFlag]
     deep_score: int
     summary: str
+    # Gaps between roles and short completed roles, from the dates: worth asking about, never
+    # scored (``timeline``). Empty for sessions saved before 1.2.
+    timeline: list[str] = []
 
     @property
     def adjustments(self) -> list[str]:

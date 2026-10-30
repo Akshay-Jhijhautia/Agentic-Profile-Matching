@@ -28,15 +28,17 @@ in the terminal.
 - **Blind to who the candidate is.** The model judges anonymous candidates:
   no name, contact details or personal fields, and no name in the search.
 - **Same input, same result.** Rules settle what the job description states,
-  you confirm what it leaves open, and stored model answers make a repeated
-  screening identical.
+  you confirm what it leaves open, code turns the evidence into verdicts, and
+  stored model answers make a repeated screening identical. Even with fresh
+  model answers, repeated runs recommend the same candidates
+  ([measured](docs/how-it-works.md#guardrails)).
 - **Every score is explained**: its breakdown, the evidence, strengths, gaps,
   and what would make a borderline candidate a clear interview.
 - **Yours to run.** OpenAI, Anthropic, Gemini, Ollama or any OpenAI-compatible
   server. Embeddings, index and data stay on your machine; with Ollama, nothing
   leaves it.
 - **Measured, not claimed.** Ranking quality, run-to-run stability and model
-  agreement are measured with scripts in this repository, alongside 576 tests.
+  agreement are measured with scripts in this repository, alongside 590 tests.
 
 **Status:** developer preview (v1.1; the browser interface,
 `resume-shortlister web`, is new on the main branch and comes with 1.2).
@@ -117,7 +119,8 @@ reviewing the result.
   any result can be questioned and checked.
 - **Bias.** Screening is blind: the model never sees a candidate's name,
   contact details or personal fields, and the search ignores them
-  ([details](docs/how-it-works.md#blind-screening)). Other signals remain,
+  ([details](docs/how-it-works.md#blind-screening)). Employment gaps and short
+  roles are listed for you to ask about, never scored. Other signals remain,
   such as schools, graduation years and locations in the work history, and the
   scoring has only been validated on synthetic resumes. Do not rely on it for
   decisions until you have checked it on your own, representative data.
