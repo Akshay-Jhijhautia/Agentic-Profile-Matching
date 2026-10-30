@@ -40,6 +40,17 @@
   code-detected risks are high. Over 5 fresh runs on three job descriptions,
   the average deep-score spread fell from 9–15 points to under 4, and interview
   recommendations agreed in every run.
+- **Requirements for any profession**: a skill the vocabulary does not know
+  (Workday, TCP/IP, Ceridian Dayforce) becomes a requirement when the job
+  description names it, is searched for in resumes as written, and gets its
+  years from the dated roles that name it. A name can be a must-have; a
+  concept the text writes in lower case ("month-end close", "relational
+  databases") stays a nice-to-have, since resumes paraphrase it. The
+  vocabulary learns the common tools' other spellings found in real resumes
+  (Windows Server versions, vSphere for VMware, ASP.NET for .NET, Microsoft
+  Office for Excel, GAAP spelled out). On 684 real resumes, the IT
+  administrator and accountant roles, which had no must-haves (over 80% of
+  applicants passed), now have their own.
 - **The same requirements from every model**: a non-skill preference counts
   only when the job description says it in those words, spelled as it does;
   the skills vocabulary knows BigQuery, Kinesis, Argo CD, CKA and
@@ -99,7 +110,14 @@ Found by screening 684 real resumes (LiveCareer examples) for the first time:
   "Microsoft Ofﬁce", non-breaking spaces) are read as plain letters, so skills
   and keywords match (85% of the real PDFs had them).
 - Several processes starting at once (the web app and a terminal screening)
-  could fail with "database is locked" while creating a new database.
+  could fail with "database is locked" while creating a new database, or with
+  "UNIQUE constraint failed" while indexing the same new folder (9 of 24
+  processes in a reproduction; now 0).
+- A new index version re-indexed only files whose content had changed: unchanged
+  files kept their old skills and metadata. The version is now part of the file
+  stamp, so every folder is re-indexed once.
+- A skill name broken across a line in PDF text ("generally accepted /
+  accounting principles") is now found.
 - `Settings(home=...)` kept the index, sessions, uploads, models and stored
   answers in the default data home; every path not set on its own now follows
   `home`.

@@ -28,6 +28,8 @@ from pathlib import Path
 
 import numpy as np
 
+_INSERT = ("INSERT INTO chunks (collection, id, resume_path, document, metadata, embedding) "
+           "VALUES (?, ?, ?, ?, ?, ?)")
 # How long a connection waits for another process's lock (seconds).
 BUSY_TIMEOUT = 30
 
@@ -168,6 +170,20 @@ class Collection:
         return self.store._query("SELECT COUNT(*) FROM chunks WHERE collection = ?", (self.name,))[0][0]
 
     def add(self, chunks: list[Chunk], embeddings: list[list[float]]) -> None:
+        rows = self._rows(chunks, embeddings)
+        with self.store._transaction() as db:
+            db.executemany(_INSERT, rows)
+
+    def replace(self, resume_path: str, chunks: list[Chunk], embeddings: list[list[float]]) -> None:
+        """Every chunk of ``resume_path`` swapped for ``chunks`` in one transaction, so two
+        processes indexing the same new folder at once (the web app and a terminal screening)
+        each leave one copy instead of colliding."""
+        rows = self._rows(chunks, embeddings)
+        with self.store._transaction() as db:
+            db.execute("DELETE FROM chunks WHERE collection = ? AND resume_path = ?", (self.name, resume_path))
+            db.executemany(_INSERT, rows)
+
+    def _rows(self, chunks: list[Chunk], embeddings: list[list[float]]) -> list[tuple]:
         if len(chunks) != len(embeddings):
             raise ValueError(f"{len(chunks)} chunks but {len(embeddings)} embeddings")
         vectors = np.asarray(embeddings, dtype=np.float32)
@@ -176,16 +192,11 @@ class Collection:
         dimension = self._dimension()
         if dimension is not None and vectors.shape[1] != dimension:
             raise ValueError(f"Embeddings have {vectors.shape[1]} dimensions; this collection has {dimension}")
-        rows = [
+        return [
             (self.name, chunk.id, chunk.metadata["resume_path"], chunk.document, json.dumps(chunk.metadata),
              vector.tobytes())
             for chunk, vector in zip(chunks, vectors)
         ]
-        with self.store._transaction() as db:
-            db.executemany(
-                "INSERT INTO chunks (collection, id, resume_path, document, metadata, embedding) "
-                "VALUES (?, ?, ?, ?, ?, ?)", rows,
-            )
 
     def delete(self, resume_path: str) -> None:
         """Remove every chunk of ``resume_path``."""

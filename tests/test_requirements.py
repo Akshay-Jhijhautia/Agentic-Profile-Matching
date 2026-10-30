@@ -10,6 +10,7 @@ from resume_shortlister.requirements import (
     as_stated,
     degree_required,
     extract_requirements,
+    is_named,
     open_questions,
 )
 from resume_shortlister.schemas import DegreeLevel, Requirements
@@ -347,7 +348,66 @@ def test_match_delegates_to_match_parsed(matcher):
     ("Financial Services", "Financial services"),
     ("trade settlement   systems", "Trade settlement systems"),
     ("Cloud Data Warehousing", None),  # the text says "a cloud data warehouse"
+    # Words that only qualify a skill go: what resumes write is the skill.
+    ("Microsoft Excel", "Excel"), ("Advanced Excel", "Excel"), ("Excel skills", "Excel"),
+    ("CompTIA certification", "CompTIA"),
+    ("Microsoft 365", "Microsoft 365"),  # "Microsoft" stays when no name remains without it
 ])
 def test_preferences_count_only_in_the_texts_own_words(preference, stated):
-    text = "- Experience in financial services or trade settlement systems\n- A cloud data warehouse"
+    text = ("- Experience in financial services or trade settlement systems\n- A cloud data warehouse\n"
+            "- Advanced Excel skills; ITIL or CompTIA certification; Microsoft 365 administration")
     assert as_stated(preference, text) == stated
+
+
+# --- skills outside the vocabulary ------------------------------------------------------------------
+
+HR_SYSTEMS_JD = """HR Systems Analyst
+
+Requirements:
+- 3+ years of experience administering Workday and Ceridian Dayforce
+- Strong knowledge of payroll compliance
+- Advanced Excel skills
+- 5+ years of human resources experience
+- Networking fundamentals: VPN and SFTP
+
+Nice to have:
+- SuccessFactors or UKG
+- Experience with benefits administration
+"""
+
+
+def test_any_skill_the_text_names_can_be_a_requirement():
+    proposed = _requirements(
+        role_title="HR Systems Analyst",
+        must_have=_must("Workday", "Ceridian Dayforce", "Payroll Compliance", "Microsoft Excel", "Human Resources",
+                        years={"Workday": 3, "Human Resources": 5}),
+        nice_to_have=["VPN", "SFTP", "SuccessFactors", "UKG", "Benefits Administration", "Cloud HR Platforms"],
+    )
+    req = extract_requirements(HR_SYSTEMS_JD, model=_fake(proposed))
+    # Names (Workday, Ceridian Dayforce) are checkable must-haves, with the years their line states;
+    # "Microsoft Excel" is the vocabulary's Excel.
+    assert [(r.skill, r.min_years) for r in req.must_have] == [
+        ("Workday", 3), ("Ceridian Dayforce", 3), ("Excel", None)]
+    # Concepts resumes paraphrase are nice-to-haves, and their years are total experience;
+    # "Cloud HR Platforms", which the text never says, is dropped.
+    assert req.nice_to_have == ["Payroll compliance", "Human resources", "VPN", "SFTP", "SuccessFactors", "UKG",
+                                "Benefits administration"]
+    assert req.min_total_years == 5
+    # The model left a line naming several skills to nice-to-have: the recruiter is asked.
+    (question,) = open_questions(HR_SYSTEMS_JD, req)
+    assert question.nice == ("VPN", "SFTP")
+
+
+@pytest.mark.parametrize("term, named", [
+    ("Workday", True), ("Ceridian Dayforce", True), ("VPN", True),
+    ("Payroll compliance", False), ("Human resources", False),
+    ("Networking", False),  # capitalised only because it starts the line
+])
+def test_names_are_told_from_concepts_by_how_the_text_writes_them(term, named):
+    assert is_named(term, HR_SYSTEMS_JD) is named
+
+
+def test_a_word_the_text_also_writes_in_lower_case_is_a_concept():
+    text = "Requirements:\n- 5+ years of accounting experience\n- Bachelor's degree in Accounting or Finance"
+    assert not is_named("Accounting", text)
+    assert is_named(".NET", "Requirements:\n- 3+ years of .net development") and is_named("TCP/IP", "- tcp/ip")

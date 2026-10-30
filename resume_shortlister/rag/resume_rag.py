@@ -39,7 +39,7 @@ DEFAULT_DB_DIR = "index"
 COLLECTION_NAME = "resumes"
 # Part of every resume's content hash: bump it when chunking or metadata
 # extraction changes so the next `index` run refreshes every resume.
-PIPELINE_VERSION = "6"
+PIPELINE_VERSION = "8"
 
 MAX_CHUNK_CHARS = 1500
 HEADER_SECTION = "Header"
@@ -93,9 +93,10 @@ _INLINE_HEADER_RE = re.compile(r"^\s*([A-Za-z][A-Za-z &/]{1,40}?)\s*:\s*(\S.*)$"
 
 
 def file_stamp(path: str) -> str:
-    """Size and modification time: unchanged files are recognised without reading them."""
+    """Size and modification time: unchanged files are recognised without reading them. The
+    pipeline version is part of it, so a new version re-reads (and re-indexes) every file."""
     stat = os.stat(path)
-    return f"{stat.st_size}:{stat.st_mtime_ns}"
+    return f"{PIPELINE_VERSION}:{stat.st_size}:{stat.st_mtime_ns}"
 
 
 def read_entry(entry: dict) -> tuple[dict | None, dict | None]:
@@ -584,6 +585,23 @@ def _extract_experience(
         if named:
             skill_years[named[0]] = max(skill_years.get(named[0], 0.0), float(claim["years"]))
     return total, skill_years
+
+
+def term_facts(sections: dict[str, str], skill: str, today: date) -> tuple[bool, float | None]:
+    """Whether a resume names ``skill``, one the vocabulary does not know (matched as written,
+    see ``skills_vocab.term_pattern``), and its years: those of the dated roles that name it,
+    raised to a claim like "8 years of Windows Server"; None when no dated role names it."""
+    pattern = skills_vocab.term_pattern(skill)
+    text = "\n".join(sections.values())
+    if not pattern.search(text):
+        return False, None
+    experience = sections.get("Experience") or sections.get(GENERAL_SECTION, "")
+    spans = [(start, end) for start, end, entry in _role_intervals(experience, today) if pattern.search(entry)]
+    years = _merged_years(spans) if spans else None
+    for claim in _YEARS_OF_SKILL_RE.finditer(text):
+        if pattern.match(claim["rest"][:_YEARS_CLAIM_WINDOW].lstrip()):
+            years = max(years or 0.0, float(claim["years"]))
+    return True, years
 
 
 def degrees_mentioned(text: str) -> list[str]:
@@ -1075,8 +1093,8 @@ class ResumeRAG:
         content_hash = content_hash or _content_hash(content)
         path_key = hashlib.sha1(path.encode("utf-8")).hexdigest()[:8]
 
-        self.remove_resume(path)
-        self.collection.add(
+        self.collection.replace(
+            path,
             [
                 Chunk(f"{c['id']}@{path_key}", c["document"],
                       _chunk_record(c, meta, file_name, content_hash, resume.get("stamp", "")))

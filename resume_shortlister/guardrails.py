@@ -147,10 +147,8 @@ def quote_section(quote: str, resume_text: str) -> str | None:
 
 
 def names_skill(quote: str, skill: str) -> bool:
-    """Whether ``quote`` names ``skill``, by any of its spellings or a skill implying it
-    (Django: Python)."""
-    found = {s.lower() for s in skills_vocab.with_implied(skills_vocab.find_skills(quote))}
-    return skill.lower() in found or bool(re.search(rf"(?<!\w){re.escape(skill)}(?!\w)", quote, re.IGNORECASE))
+    """Whether ``quote`` names ``skill`` (see ``skills_vocab.mentions``)."""
+    return skills_vocab.mentions(quote, skill)
 
 
 def work_line(skill: str, resume_text: str) -> str | None:

@@ -136,6 +136,27 @@ SKILLS: dict[str, list[str]] = {
     "Cypress": [],
     "Selenium": [],
     "XCTest": [],
+    # Microsoft stack and IT operations: the common tools' other spellings, found in real resumes
+    ".NET": [".net framework", ".net core", "dotnet"],
+    "ASP.NET": ["asp .net", "asp.net mvc", "asp.net core"],
+    "VB.NET": ["vb .net", "visual basic .net"],
+    "SQL Server": ["mssql", "ms sql", "ms sql server", "microsoft sql server"],
+    "PowerShell": ["power shell"],
+    "Windows Server": [
+        "windows nt server", "windows 2000 server", "windows 2003 server", "windows 2008 server",
+        "windows 2012 server", "server 2003", "server 2008", "server 2012", "server 2016", "server 2019",
+        "server 2022",
+    ],
+    "Active Directory": ["ad ds", "active directory domain services"],
+    "VMware": ["vsphere", "esxi", "vcenter"],
+    "Hyper-V": ["hyperv", "hyper v"],
+    # Business and finance tools
+    "Microsoft Office": ["ms office", "microsoft office suite", "ms office suite"],
+    "Excel": ["microsoft excel", "ms excel"],
+    "GAAP": ["us gaap", "u.s. gaap", "generally accepted accounting principles"],
+    "IFRS": ["international financial reporting standards"],
+    "QuickBooks": ["quick books", "quickbooks online"],
+    "SAP": [],
     # Practices
     "Agile": [],
     "Scrum": [],
@@ -153,7 +174,7 @@ NICE_ONLY = {"Accessibility", "CKA"}
 CASE_SENSITIVE = {
     "Go", "Rust", "Swift", "Ruby", "Dart", "Spring", "Flask", "Express", "React", "Redux",
     "Angular", "Spark", "Helm", "Jest", "Oracle", "Agile", "Scrum", "Snowflake", "Android",
-    "Keras", "ML", "REST", "JS",
+    "Keras", "ML", "REST", "JS", "Excel", "SAP",
 }
 _CASE_SENSITIVE_BY_ALIAS = {spelling.lower(): spelling for spelling in CASE_SENSITIVE}
 # Too short or ambiguous to find in prose at all; only recognised as an item of a skills list.
@@ -192,8 +213,9 @@ def _free_text_patterns() -> tuple[re.Pattern, re.Pattern]:
             insensitive.append(alias)
 
     def build(aliases: list[str], flags: int) -> re.Pattern:
-        # Longest first so "Spring Boot" wins over "Spring" at the same position.
-        alternatives = "|".join(re.escape(a) for a in sorted(aliases, key=len, reverse=True))
+        # Longest first so "Spring Boot" wins over "Spring" at the same position; the words of
+        # a multi-word alias may be split by any whitespace, a line break in PDF text included.
+        alternatives = "|".join(re.escape(a).replace(r"\ ", r"\s+") for a in sorted(aliases, key=len, reverse=True))
         return re.compile(rf"(?<![\w+#.])(?:{alternatives})(?![\w+#]|\.\w)", flags)
 
     return build(insensitive, re.IGNORECASE), build(sensitive, 0)
@@ -204,7 +226,7 @@ def find_skills(text: str) -> list[str]:
     found: list[tuple[int, int, str]] = []
     for pattern in _free_text_patterns():
         for match in pattern.finditer(text):
-            found.append((match.start(), match.end(), _ALIAS_TO_SKILL[match.group(0).lower()]))
+            found.append((match.start(), match.end(), _ALIAS_TO_SKILL[" ".join(match.group(0).lower().split())]))
     # Drop matches nested inside a longer match from the other pattern.
     found.sort(key=lambda m: (m[0], -(m[1] - m[0])))
     skills, covered_until = [], -1
@@ -230,6 +252,9 @@ IMPLIED_SKILLS = {
     "Jetpack Compose": "Kotlin", "Flutter": "Dart",
     # Managed services imply their cloud.
     "AWS SageMaker": "AWS", "AWS Glue": "AWS",
+    "ASP.NET": ".NET", "VB.NET": ".NET", "C#": ".NET", "SQL Server": "SQL",
+    # Office includes Excel.
+    "Microsoft Office": "Excel",
 }
 
 
@@ -241,3 +266,28 @@ def with_implied(skills: list[str]) -> list[str]:
         if implied and implied not in result:
             result.append(implied)
     return result
+
+
+# --- skills outside the vocabulary ------------------------------------------------------------
+#
+# The vocabulary cannot list every tool of every profession. A skill it does not know
+# ("Windows Server", "GAAP", "QuickBooks") is matched as written: any case, with spaces,
+# hyphens and slashes interchangeable ("TCP/IP" = "TCP IP", "month-end" = "month end") and
+# an optional plural, while ".", "#" and "+" stay significant (".NET" is not "net").
+
+
+@lru_cache(maxsize=512)
+def term_pattern(term: str) -> re.Pattern:
+    """How a skill the vocabulary does not know is found in text."""
+    parts = [part for part in re.split(r"[\s\-/]+", term.strip()) if part]
+    body = r"[\s\-/]*".join(map(re.escape, parts))
+    return re.compile(rf"(?<![\w.#+]){body}(?:e?s)?(?![\w#+])", re.IGNORECASE)
+
+
+def mentions(text: str, skill: str) -> bool:
+    """Whether ``text`` names ``skill``: through the vocabulary when it knows the skill (its
+    aliases, or a skill implying it: Django names Python), else as written (``term_pattern``)."""
+    canonical = normalize_skill(skill)
+    if canonical:
+        return canonical in with_implied(find_skills(text))
+    return bool(term_pattern(skill).search(text))

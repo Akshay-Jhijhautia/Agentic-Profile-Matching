@@ -87,13 +87,28 @@ filters**, so they must not depend on which model, or which run, read the job
 description. The model proposes; **rules decide wherever the text is explicit**
 (`requirements.apply_rules`):
 
+- **Any profession's skills.** The skills vocabulary knows common skills and
+  their other spellings ("k8s", "vSphere" for VMware, "Server 2008" for Windows
+  Server); it cannot know every tool of every trade. Any other skill the model
+  proposes counts when the job description names it, spelled as the text does
+  and without the words that only qualify it ("Advanced Excel skills" is
+  "Excel"): Workday, Ceridian Dayforce, TCP/IP. Resumes are then searched for
+  it as written (any case, spacing, hyphens or a plural; "." and "#" stay
+  significant, so ".NET" is not "net income"), and its years come from the
+  dated roles that name it.
 - **Must-haves.** Never a skill in a "preferred" section or a softened phrase
   ("familiarity with", "a plus"), one of several options ("Oracle or
   PostgreSQL", "Kubernetes or similar"), a skill mentioned only outside the
-  requirements section, or a concept the resume parser cannot check
-  ("Relational Databases"). A requirement naming one skill makes it a must-have,
-  even if the model missed it. Only requirements naming several skills
-  ("deploying models with Docker and Kubernetes on AWS") are the model's call.
+  requirements section, or a **concept**: a term the text writes in plain lower
+  case ("relational databases", "month-end close", "accounting"), which resumes
+  paraphrase, so a knockout on its exact words would reject people who have
+  it. A **name** (a capital past the start of a sentence, a digit or a symbol:
+  GAAP, Windows Server, TCP/IP) is written the same way in resumes and can be a
+  must-have. Concepts stay nice-to-haves, judged by the deep review, and "5+
+  years of accounting experience" is total experience. A requirement naming
+  one skill makes it a must-have, even if the model missed it. Only
+  requirements naming several skills ("deploying models with Docker and
+  Kubernetes on AWS") are the model's call.
 - **Years** come from the text, not the model: "3+ years with React and
   Node.js" sets both; "React and 3+ years" ties the years to React; "6+ years
   of software development" is total experience.
@@ -107,6 +122,18 @@ description. The model proposes; **rules decide wherever the text is explicit**
 - **Practices and certifications** (accessibility, CKA) can rank candidates
   but are never knockouts: a resume often does not name them even when the
   candidate has them.
+
+Validated on 684 real resumes (LiveCareer examples) against an IT systems
+administrator, a .NET developer and a senior accountant job description:
+before, the administrator and accountant roles had no must-haves at all (the
+vocabulary knew none of their tools) and over 80% of applicants passed; now
+each role gets its own (Windows Server, Active Directory, VMware…; GAAP and
+Excel). Each must-have's knockouts were checked for resumes naming the skill
+another way; the common ones ("Microsoft Office" for Excel, "ASP.NET" for
+.NET) went into the vocabulary: Excel's knocked-out resumes that showed it another
+way fell from 44 to 6, and those 6 only mention "spreadsheets". Across
+gpt-5.6-terra and gpt-6-luna, agreement on non-skill preferences rose from
+0.87 to 1.00, and on must-haves from 0.89 to 0.90.
 
 Measured with `scripts/requirements_stability.py` (7 JDs and 3 requests, 5 runs
 each with gpt-5.6-terra and gpt-6-luna), the share of runs that agree:

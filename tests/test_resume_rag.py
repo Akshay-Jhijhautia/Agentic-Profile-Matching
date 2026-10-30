@@ -365,3 +365,23 @@ def test_llm_error_is_logged_not_raised(caplog):
     meta = _meta("hello world", resume_path="x/resume_ann_lee.pdf", llm=llm)
     assert meta["name"] == "Ann Lee"
     assert "LLM metadata fallback failed" in caplog.text
+
+
+def test_years_for_a_skill_the_vocabulary_does_not_know():
+    text = """SKILLS
+Workday, payroll
+
+EXPERIENCE
+HRIS Analyst, Contoso (Jan 2019 - Dec 2021)
+- Administered Workday HCM for 4,000 employees.
+Payroll Clerk, Fabrikam (Jan 2016 - Dec 2018)
+- Processed payroll in ADP.
+"""
+    sections = resume_rag.split_sections(text)
+    assert resume_rag.term_facts(sections, "Workday", TODAY) == (True, 3.0)  # the role that names it
+    assert resume_rag.term_facts(sections, "ADP", TODAY) == (True, 3.0)
+    assert resume_rag.term_facts(sections, "Ceridian Dayforce", TODAY) == (False, None)
+    listed_only = resume_rag.split_sections("SKILLS\nWorkday\n\nEXPERIENCE\nAnalyst, Contoso (2019 - 2021)\n- Reports.")
+    assert resume_rag.term_facts(listed_only, "Workday", TODAY) == (True, None)  # named, but not dated
+    claimed = resume_rag.split_sections("SUMMARY\n6 years of Workday administration.")
+    assert resume_rag.term_facts(claimed, "Workday", TODAY) == (True, 6.0)

@@ -55,3 +55,32 @@ def test_with_implied_adds_languages_once():
 
 def test_managed_cloud_services_imply_their_cloud():
     assert skills_vocab.with_implied(["AWS SageMaker", "AWS Glue"]) == ["AWS SageMaker", "AWS Glue", "AWS"]
+
+
+# --- any skill, as resumes write it ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize("text, skill, named", [
+    # Outside the vocabulary: matched as written, spacing, hyphens, slashes and a plural aside.
+    ("Configured TCP IP and DNS", "TCP/IP", True),
+    ("Configured DNS servers", "DNS", True),
+    ("Owned the month end close", "Month-end close", True),
+    ("reconciliations of accounts", "Reconciliation", True),
+    ("Deployed Microsoft 365 for 300 users", "Microsoft 365", True),
+    ("Built Workday reports", "Workday", True),
+    ("Working day shifts", "Workday", False),
+    # Symbols stay significant.
+    ("Net income grew", ".NET", False),
+    ("Built .NET Core APIs", ".NET", True),
+    ("Wrote C code", "C#", False),
+    # Through the vocabulary: aliases, implications, case-sensitive ordinary words, line breaks.
+    ("Server 2008 and Server 2012", "Windows Server", True),
+    ("I administer a vSphere cluster", "VMware", True),
+    ("Built web forms in ASP.NET 4.5", ".NET", True),
+    ("Microsoft Office Suite, Outlook", "Excel", True),
+    ("I excel at closing deals", "Excel", False),
+    ("complied with generally accepted\naccounting principles", "GAAP", True),
+    ("Built APIs in Django", "Python", True),
+])
+def test_any_skill_is_found_as_resumes_write_it(text, skill, named):
+    assert skills_vocab.mentions(text, skill) is named

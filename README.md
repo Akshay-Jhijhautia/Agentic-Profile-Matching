@@ -38,7 +38,7 @@ in the terminal.
   server. Embeddings, index and data stay on your machine; with Ollama, nothing
   leaves it.
 - **Measured, not claimed.** Ranking quality, run-to-run stability and model
-  agreement are measured with scripts in this repository, alongside 609 tests.
+  agreement are measured with scripts in this repository, alongside 643 tests.
 
 **Status:** developer preview (v1.1; the browser interface,
 `resume-shortlister web`, is new on the main branch and comes with 1.2).
@@ -153,6 +153,10 @@ reviewing the result.
   model's call until you confirm it.
 - **Heuristic skill years.** A skill's years come from the dated roles that
   mention it, so skills listed only in a Skills section are "unverified".
+- **A skill written an unusual way can be missed.** Must-haves are checked by
+  name; the vocabulary knows the common other spellings, but not every one
+  ("Windows 2000, 2003 Server" is not read as Windows Server), so look at the
+  closest knocked-out candidates in the report.
 - **Blind screening covers identity, not every proxy.** Names, contact details
   and personal fields are removed; schools, graduation years, locations in the
   work history, affiliations and pronouns are not. A name part that is also a

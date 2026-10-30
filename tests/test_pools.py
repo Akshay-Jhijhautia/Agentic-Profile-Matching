@@ -10,7 +10,7 @@ from resume_shortlister.config import Settings
 from resume_shortlister.pools import pool_name, resolve_folder
 from fpdf import FPDF
 
-from resume_shortlister.rag import fs_tools
+from resume_shortlister.rag import fs_tools, resume_rag
 from resume_shortlister.schemas import Requirements
 from resume_shortlister.services import Services
 from tests.paths import RESUMES_DIR
@@ -194,6 +194,16 @@ def test_unchanged_files_are_not_read_again(offline, tmp_path, monkeypatch):
     assert reads == []
 
 
+def test_a_new_index_version_reindexes_unchanged_files(offline, tmp_path, monkeypatch):
+    """How resumes are read changed (a new skill, a fix): every file is indexed again, even
+    though none of them changed."""
+    folder = _folder(tmp_path, "applicants", ["resume_alex_lee.txt", "resume_john_doe.pdf"])
+    offline.use_folder(folder)
+    monkeypatch.setattr(resume_rag, "PIPELINE_VERSION", resume_rag.PIPELINE_VERSION + "-next")
+    report = offline.use_folder(folder)
+    assert len(report.indexed) == 2 and report.unchanged == 0
+
+
 
 # --- uploads ------------------------------------------------------------------------------------------
 
@@ -256,3 +266,47 @@ def test_use_paths_uploads_files_and_keeps_originals(offline, tmp_path):
 
     folder_report, no_batch = offline.use_paths([str(source)])
     assert no_batch is None and offline.pool.folder == source and folder_report.ready == 2
+
+
+def test_round_one_checks_skills_the_vocabulary_does_not_know(offline, tmp_path):
+    folder = tmp_path / "hris"
+    folder.mkdir()
+    (folder / "resume_ana_ruiz.txt").write_text(
+        "Ana Ruiz\n\nEXPERIENCE\nHRIS Analyst, Contoso (Jan 2019 - Dec 2022)\n- Administered Workday HCM.\n")
+    (folder / "resume_ben_hale.txt").write_text(
+        "Ben Hale\n\nEXPERIENCE\nHR Generalist, Fabrikam (Jan 2018 - Dec 2022)\n- Ran onboarding in BambooHR.\n")
+    offline.use_folder(folder)
+    role = Requirements.model_validate({
+        "role_title": "HRIS Analyst", "must_have": [{"skill": "Workday", "min_years": 2}], "nice_to_have": [],
+        "min_total_years": None, "min_degree": None,
+    })
+    by_id = {m.id: m for m in screening.evaluate(offline, role)}
+    assert by_id["ana_ruiz"].passes_must_haves and by_id["ana_ruiz"].must_have_checks[0].detail == "4 yrs Workday (needs 2+)"
+    assert by_id["ben_hale"].failed_requirements == ["no Workday on resume (needs 2+ yrs Workday)"]
+    assert by_id["ana_ruiz"].score_breakdown.skill_coverage == 1.0 and by_id["ben_hale"].score_breakdown.skill_coverage == 0.0
+
+
+def test_several_processes_can_index_the_same_new_folder_at_once(tmp_path):
+    """Two screenings of the same new folder (the web app and a terminal) once collided
+    inserting the same resumes: "UNIQUE constraint failed"."""
+    import subprocess
+    import sys
+    import time
+
+    script = (
+        "import pathlib, sys\n"
+        "from resume_shortlister.config import Settings\n"
+        "from resume_shortlister.services import Services\n"
+        "services = Services(settings=Settings(home=sys.argv[2], embedder='hashing'))\n"
+        "while not pathlib.Path(sys.argv[1]).exists(): pass\n"
+        "services.use_folder(sys.argv[3])\n"
+    )
+    for round_ in range(2):
+        folder = shutil.copytree(RESUMES_DIR, tmp_path / f"applicants{round_}")
+        start = tmp_path / f"go{round_}"
+        procs = [subprocess.Popen([sys.executable, "-c", script, str(start), str(tmp_path / f"home{round_}"),
+                                   str(folder)], stderr=subprocess.PIPE) for _ in range(6)]
+        time.sleep(1.5)  # every process waiting on the start signal
+        start.touch()
+        errors = [p.communicate(timeout=300)[1].decode() for p in procs]
+        assert [p.returncode for p in procs] == [0] * 6, [e for e in errors if e][:1]

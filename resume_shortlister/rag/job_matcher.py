@@ -20,6 +20,7 @@ match score, matched skills, relevant excerpts and a written reasoning.
 from __future__ import annotations
 
 import re
+from datetime import date
 
 from rank_bm25 import BM25Okapi
 
@@ -308,6 +309,10 @@ class JobMatcher:
             skills.setdefault(path, list(chunk["metadata"].get("skills", [])))
         if not texts:
             return {}
+        terms = [s for s in parsed["required_skills"] + parsed["preferred_skills"] if skills_vocab.normalize_skill(s) is None]
+        for path in texts:  # skills the vocabulary does not know count as skill tokens too
+            text = "\n".join(texts[path])
+            skills[path] += [t for t in terms if t not in skills[path] and skills_vocab.term_pattern(t).search(text)]
 
         paths = list(texts)
         bm25 = BM25Okapi([_resume_tokens(texts[p], skills[p]) for p in paths])
@@ -353,7 +358,11 @@ class JobMatcher:
             candidates.update(self._semantic_candidates(query, keyword_only))
 
         jd_skills = parsed["required_skills"] + parsed["preferred_skills"]
+        # Skills the vocabulary does not know were not extracted at indexing: read them now.
+        terms = [s for s in jd_skills if skills_vocab.normalize_skill(s) is None]
         for candidate in candidates.values():
+            if terms:
+                self._add_terms(candidate, terms)
             candidate["keyword_score"] = keyword.get(candidate["resume_path"], 0.0)
             candidate.update(
                 _skill_match(
@@ -363,8 +372,7 @@ class JobMatcher:
                 )
             )
             for chunk in candidate["chunks"]:
-                mentioned = set(skills_vocab.with_implied(skills_vocab.find_skills(chunk["text"])))
-                chunk["skills"] = [s for s in jd_skills if s in mentioned]
+                chunk["skills"] = [s for s in jd_skills if skills_vocab.mentions(chunk["text"], s)]
             candidate["semantic_norm"] = round(
                 calibrate_semantic(candidate["semantic_score"], self.rag.embedder_name), 4
             )
@@ -383,6 +391,22 @@ class JobMatcher:
             reverse=True,
         )
         return ranked[:k]
+
+    def _add_terms(self, candidate: dict, terms: list[str]) -> None:
+        """Add the ``terms`` (skills the vocabulary does not know) the resume names, and their
+        years, to the candidate's skills, read from the resume's indexed text."""
+        sections: dict[str, str] = {}
+        for chunk in self.rag.collection.chunks(candidate["resume_path"]):
+            name = chunk.metadata["section"]
+            sections[name] = f"{sections.get(name, '')}\n{_excerpt(chunk.document)}"
+        metadata = candidate["metadata"]
+        have = {s.lower() for s in metadata["skills"]}
+        for term in terms:
+            named, years = resume_rag.term_facts(sections, term, date.today())
+            if named and term.lower() not in have:
+                metadata["skills"] = [*metadata["skills"], term]
+            if years is not None:
+                metadata["skill_years"] = {**metadata["skill_years"], term: years}
 
     # --- ranking and output ---
 
