@@ -47,23 +47,83 @@ and [Limitations](#limitations) before relying on it.
 
 ## Get started
 
-Requires Python 3.11+ and a chat model: OpenAI by default, or Anthropic,
-Google Gemini, a local Ollama model or any OpenAI-compatible server
-([providers](docs/configuration.md#chat-model-providers)).
+Runs on **macOS and Linux**. Windows support is planned for the next version.
+
+You need Python 3.11 or newer, git, and an API key for a chat model: OpenAI by
+default, or Anthropic, Google Gemini, a local Ollama model or any
+OpenAI-compatible server ([providers](docs/configuration.md#chat-model-providers)).
+
+### 1. Install
+
+**macOS**
 
 ```bash
-pip install "resume-shortlister @ git+https://github.com/Akshay-Jhijhautia/resume-shortlister.git"
-export OPENAI_API_KEY=sk-...        # or put it in ~/.resume-shortlister/.env
+python3 --version     # 3.11 or newer; if not, install Python from python.org or `brew install python@3.12`
+git --version         # if missing, macOS offers to install it
 
-resume-shortlister web              # the app in your browser, on this computer only
+mkdir -p ~/resume-shortlister && cd ~/resume-shortlister
+python3 -m venv .venv
+source .venv/bin/activate
+pip install "resume-shortlister @ git+https://github.com/Akshay-Jhijhautia/resume-shortlister.git"
 ```
 
-Drop resumes (PDF, DOCX, TXT or MD) on the page or give a folder, describe the
-role, and follow the screening as it runs. Select a candidate for the evidence
-behind their place and interview questions; ask follow-ups in the conversation.
-The first screening downloads the local embedding model once (180 MB).
+**Linux** (Ubuntu 24.04 and Debian; other distributions: install Python 3.11+ and git with
+their package manager)
 
-Or in the terminal:
+```bash
+sudo apt update && sudo apt install -y python3 python3-venv git
+
+mkdir -p ~/resume-shortlister && cd ~/resume-shortlister
+python3 -m venv .venv
+source .venv/bin/activate
+pip install "resume-shortlister @ git+https://github.com/Akshay-Jhijhautia/resume-shortlister.git"
+```
+
+On Ubuntu 22.04, whose Python is 3.10, install `python3.11 python3.11-venv` instead and
+create the environment with `python3.11 -m venv .venv`.
+
+Installing takes a minute or two. Check it with `resume-shortlister --version`.
+
+### 2. Add your API key (once)
+
+```bash
+mkdir -p ~/.resume-shortlister
+nano ~/.resume-shortlister/.env       # one line: OPENAI_API_KEY=sk-...   (save: Ctrl-O, Enter; exit: Ctrl-X)
+```
+
+The key stays in that file on your computer; the app never shows it.
+
+### 3. Start it
+
+```bash
+resume-shortlister web
+```
+
+Your browser opens http://127.0.0.1:8765/ (if it does not, open that address yourself).
+A green dot next to the model name means ready; an amber dot comes with a message saying
+what to fix. Keep the terminal open; Ctrl-C stops the app.
+
+Drop resumes (PDF, DOCX, TXT or MD) on the page or give a folder, describe the
+role or paste the job description, and follow the screening as it runs. Select a
+candidate for the evidence behind their place and interview questions; ask
+follow-ups in the conversation. The first time, it downloads the local embedding
+model (about 200 MB) and reads every resume, which takes a few minutes for a few
+hundred resumes ("Working…" meanwhile); later screenings of the same folder take
+about a minute.
+
+Next time: `cd ~/resume-shortlister && source .venv/bin/activate && resume-shortlister web`.
+Your screenings are saved under Sessions.
+
+| If | Then |
+| --- | --- |
+| `command not found: resume-shortlister` | Run `source .venv/bin/activate` in `~/resume-shortlister` first |
+| An amber dot: "OPENAI_API_KEY is not set" | Check `~/.resume-shortlister/.env`, then restart the app |
+| "Address already in use" | It is already running in another terminal, or use `resume-shortlister web --port 8766` |
+| "requires a different Python" | Your Python is older than 3.11: see the Linux note above |
+
+### 4. Or use it in the terminal
+
+The same screening and conversation, without a browser:
 
 ```bash
 resume-shortlister chat --resumes ~/Downloads/applicants
