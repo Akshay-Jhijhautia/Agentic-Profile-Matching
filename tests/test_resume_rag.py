@@ -209,7 +209,7 @@ def test_skills_list_parsing():
     )
     assert _meta(text)["skills"] == [
         "Python", "Java", "Scala", "AWS", "EC2", "S3", "Lambda", "scikit-learn", "Hugging Face",
-        "WCAG accessibility",
+        "Accessibility",
     ]
 
 

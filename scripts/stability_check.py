@@ -106,11 +106,15 @@ def main(argv: list[str] | None = None) -> int:
 
     models = models or [services.settings.llm_model]
     by_model: dict[str, list[dict]] = {}
-    for name in models:
-        model_services = dataclasses.replace(services, model=llm.make_chat_model(name))
-        for number in range(1, args.runs + 1):
-            print(f"{name}: run {number}/{args.runs}…", file=sys.stderr)
-            by_model.setdefault(name, []).append(matching_agent.screen(model_services, args.jd))
+    try:
+        for name in models:
+            model_services = dataclasses.replace(services, model=llm.make_chat_model(name))
+            for number in range(1, args.runs + 1):
+                print(f"{name}: run {number}/{args.runs}…", file=sys.stderr)
+                by_model.setdefault(name, []).append(matching_agent.screen(model_services, args.jd))
+    except providers.cli_errors() as exc:  # e.g. out of credits halfway: say so, not a traceback
+        print(f"Error: {providers.error_message(exc)}", file=sys.stderr)
+        return 1
 
     for name, runs in by_model.items():
         if len(runs) > 1:

@@ -19,7 +19,8 @@ knockouts whichever model, or run, read it:
 - A degree is required only when a requirement names it without "or
   equivalent", "preferred" and the like; the lowest degree it names counts.
 - Nice-to-haves are every other skill the text names, plus the model's
-  preferences that are not skills ("financial services").
+  preferences that are not skills, when the text says them in those words
+  and spelled as it does ("Financial services"; see ``as_stated``).
 
 What rules cannot settle, the model's choice on a requirement naming several
 skills, is listed by ``open_questions`` so a recruiter can confirm it.
@@ -85,7 +86,9 @@ class Clause:
     @property
     def demands(self) -> list[str]:
         """The skills this requirement could make must-haves."""
-        return [] if self.optional else [s for s in self.skills if s.lower() not in self.alternatives]
+        if self.optional:
+            return []
+        return [s for s in self.skills if s.lower() not in self.alternatives and s not in skills_vocab.NICE_ONLY]
 
 
 def _logical_lines(text: str) -> list[str]:
@@ -197,6 +200,21 @@ def stated_years(found: list[Clause], must: list[str]) -> tuple[dict[str, float]
     return per_skill, total, stated
 
 
+def as_stated(preference: str, text: str) -> str | None:
+    """``preference`` as the job description writes it ("financial services"), capitalised;
+    None when the text does not say it in those words. Models phrase the same preference
+    differently ("Cloud Data Warehousing" for "a cloud data warehouse"); only the text's own
+    words give every model the same requirement."""
+    words = preference.strip().split()
+    if not words:
+        return None
+    found = re.search(r"(?<!\w)" + r"\s+".join(map(re.escape, words)) + r"(?!\w)", text, re.IGNORECASE)
+    if not found:
+        return None
+    stated = " ".join(found[0].split())
+    return stated[0].upper() + stated[1:]
+
+
 def apply_rules(proposed: Requirements, text: str) -> Requirements:
     """The model's requirements with every explicit part of the text decided by rules."""
     found = clauses(text)
@@ -208,8 +226,9 @@ def apply_rules(proposed: Requirements, text: str) -> Requirements:
         total = proposed.min_total_years
     must_lower = {s.lower() for s in must}
     other_preferences = [
-        item for item in [*proposed.nice_to_have, *proposed.must_have_skills]
+        stated for item in [*proposed.nice_to_have, *proposed.must_have_skills]
         if item.lower() not in must_lower and not skills_vocab.find_skills(item) and item not in skills_vocab.SKILLS
+        and (stated := as_stated(item, text))
     ]
     return Requirements.model_validate({
         "role_title": proposed.role_title,

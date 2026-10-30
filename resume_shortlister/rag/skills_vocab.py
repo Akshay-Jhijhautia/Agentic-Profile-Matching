@@ -91,8 +91,10 @@ SKILLS: dict[str, list[str]] = {
     "Hadoop": [],
     "Airflow": ["apache airflow"],
     "Kafka": ["apache kafka"],
+    "Kinesis": ["amazon kinesis", "aws kinesis"],
     "Databricks": [],
     "Snowflake": [],
+    "BigQuery": ["google bigquery"],
     "dbt": [],
     "AWS Glue": [],
     "ETL": ["elt"],
@@ -115,6 +117,7 @@ SKILLS: dict[str, list[str]] = {
     "Docker": [],
     "Kubernetes": ["k8s"],
     "Helm": [],
+    "Argo CD": ["argocd"],
     "Terraform": [],
     "Ansible": [],
     "Jenkins": [],
@@ -136,7 +139,14 @@ SKILLS: dict[str, list[str]] = {
     # Practices
     "Agile": [],
     "Scrum": [],
+    "Accessibility": ["web accessibility", "wcag", "a11y"],
+    # Certifications
+    "CKA": ["certified kubernetes administrator"],
 }
+
+# Practices and certifications a resume often does not name even when the candidate has
+# them: they rank candidates but never knock one out (``requirements`` keeps them nice-to-have).
+NICE_ONLY = {"Accessibility", "CKA"}
 
 # Aliases that are ordinary words: in free text they only count when spelled exactly
 # like this, so "react to incidents" is not read as React but "Staff ML Engineer" is ML.

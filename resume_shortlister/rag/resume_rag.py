@@ -39,7 +39,7 @@ DEFAULT_DB_DIR = "index"
 COLLECTION_NAME = "resumes"
 # Part of every resume's content hash: bump it when chunking or metadata
 # extraction changes so the next `index` run refreshes every resume.
-PIPELINE_VERSION = "4"
+PIPELINE_VERSION = "5"
 
 MAX_CHUNK_CHARS = 1500
 HEADER_SECTION = "Header"

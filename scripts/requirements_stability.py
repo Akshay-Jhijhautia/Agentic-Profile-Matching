@@ -83,8 +83,12 @@ def main(argv: list[str] | None = None) -> int:
 
     jobs = [(jd, name) for jd in inputs for name in models for _ in range(args.runs)]
     texts = {jd: load_job_description(jd) for jd in inputs}
-    with ThreadPoolExecutor(8) as pool:
-        results = list(pool.map(lambda job: extract_requirements(texts[job[0]], model=models[job[1]]), jobs))
+    try:
+        with ThreadPoolExecutor(8) as pool:
+            results = list(pool.map(lambda job: extract_requirements(texts[job[0]], model=models[job[1]]), jobs))
+    except providers.cli_errors() as exc:  # e.g. out of credits halfway: say so, not a traceback
+        print(f"Error: {providers.error_message(exc)}", file=sys.stderr)
+        return 1
 
     totals: dict[str, list[float]] = {field: [] for field in FIELDS}
     for jd in inputs:

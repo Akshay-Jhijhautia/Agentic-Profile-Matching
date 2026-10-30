@@ -100,7 +100,13 @@ description. The model proposes; **rules decide wherever the text is explicit**
 - **Degree** only when a requirement asks for it without "or equivalent" or
   "preferred".
 - **Nice-to-haves** are every other skill the text names, plus the model's
-  non-skill preferences ("financial services").
+  non-skill preferences when the text says them in those words, spelled as
+  the text does ("Financial services"). A preference the model phrases its
+  own way ("Cloud Data Warehousing" for "a cloud data warehouse") is dropped:
+  only the text's own words give every model the same requirement.
+- **Practices and certifications** (accessibility, CKA) can rank candidates
+  but are never knockouts: a resume often does not name them even when the
+  candidate has them.
 
 Measured with `scripts/requirements_stability.py` (7 JDs and 3 requests, 5 runs
 each with gpt-5.6-terra and gpt-6-luna), the share of runs that agree:
@@ -112,6 +118,11 @@ each with gpt-5.6-terra and gpt-6-luna), the share of runs that agree:
 | nice-to-have skills | 0.57 (with wording) | same as the must-haves |
 | must-haves | 0.88 | 0.86 |
 | degree | 1.00 | 1.00 |
+
+Keeping other preferences to the text's own words, and teaching the
+vocabulary the skills models spelled differently ("Web Accessibility (WCAG)",
+"Amazon Kinesis", BigQuery, Argo CD), raised the agreement on those
+preferences across both models from 0.73 to 0.87 (3 runs per model).
 
 What still varies is exactly the multi-skill lines (is "iOS" a must-have next
 to Swift? Prometheus and Grafana?), the cases a recruiter should settle. So in
@@ -188,10 +199,19 @@ evidence-decided skill verdicts and risks by kind:
 | Data engineer | 14.6 (27) → **3.3 (7)** | 86% → **100%** | 0.50 → **0.83** |
 
 What still varies is whether the model raises one risk of a kind, worth at
-most 3 points of final score. An earlier measurement across two models
-(gpt-5.6-terra and gpt-6-luna, before these two guardrails) ranked the
-frontend shortlist identically and matched 2 of 3 recommendations; it has not
-been repeated since.
+most 3 points of final score.
+
+**Across models** (gpt-5.6-terra and gpt-6-luna, 2 fresh runs each, the same
+three job descriptions): both models extracted identical requirements, and all
+four runs recommended the same candidates on every job description.
+
+| Job description | Deep-score spread, mean (max) | Same interview recommendations | Ranking agreement (Kendall tau) |
+| --- | --- | --- | --- |
+| Frontend (React) | 6.7 (12) → **1.7 (5)** | 67% → **100%** | 1.00 → **1.00** |
+| Full-stack | – → **1.3 (5)** | – → **100%** | – → **0.83** |
+| Data engineer | 10.3 (23) → **1.0 (5)** | 100% → **100%** | 0.68 → **0.95** |
+
+Other providers (Anthropic, Gemini, Ollama) have not been measured.
 
 ```bash
 python -m scripts.generate_sample_resumes /tmp/sample_resumes     # see development.md: Sample data

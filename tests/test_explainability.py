@@ -187,15 +187,16 @@ def test_report_tool_errors(report_tool, state, error):
 # --- end to end ---------------------------------------------------------------------------------------------
 
 
-def _screen(services, verdict: str, role: Requirements = ROLE, **settings):
+def _screen(services, verdict: str, role: Requirements = ROLE, ask: str = "Python backend engineer", **settings):
     services.model = FakeChatModel({Requirements: role, **SCREENING_RESPONSES, DeepReview: fake_review(verdict)})
     services.settings = dataclasses.replace(services.settings, shortlist_size=3, **settings)
-    return matching_agent.screen(services, "Python backend engineer")
+    return matching_agent.screen(services, ask)
 
 
 def test_pipeline_suggests_improvements_and_saves_reports(services):
     # Nice-to-haves nobody has: the deep score is the must-haves' 70, so finals are borderline.
-    state = _screen(services, verdict="missing", role=ROLE.model_copy(update={"nice_to_have": ["Rust", "Elixir"]}))
+    state = _screen(services, verdict="missing", role=ROLE.model_copy(update={"nice_to_have": ["Rust", "Elixir"]}),
+                    ask="Python backend engineer; Rust and Elixir are a plus")
     borderline = [m for m in state["shortlist"] if m.borderline]
     assert borderline and all(m.improvements for m in borderline)
     assert sum(c is ImprovementSuggestions for c, _ in services.model.calls) == 1

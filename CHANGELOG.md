@@ -40,6 +40,13 @@
   code-detected risks are high. Over 5 fresh runs on three job descriptions,
   the average deep-score spread fell from 9–15 points to under 4, and interview
   recommendations agreed in every run.
+- **The same requirements from every model**: a non-skill preference counts
+  only when the job description says it in those words, spelled as it does;
+  the skills vocabulary knows BigQuery, Kinesis, Argo CD, CKA and
+  Accessibility (WCAG), and practices and certifications are never knockouts.
+  Across gpt-5.6-terra and gpt-6-luna, requirements came out identical and
+  every run recommended the same candidates on three job descriptions.
+  Folders are re-indexed once.
 - **Timeline notes, not scored**: gaps of 6 months or more between roles and
   short completed roles (not internships or contracts) are computed from the
   dates and listed in the candidate's report and detail, for the recruiter to
@@ -78,6 +85,9 @@
 
 ### Fixed
 
+- `scripts/stability_check.py` and `scripts/requirements_stability.py` stop
+  with a one-line error when the provider refuses (no credits, rate limit)
+  instead of a traceback.
 - A name that is also a skill counted as one: "Ruby Swift" was credited with
   Ruby and Swift from her name line, passing must-haves she does not show.
 - Progress notes named the deep-reviewed candidate with part of an internal

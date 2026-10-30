@@ -30,15 +30,15 @@ in the terminal.
 - **Same input, same result.** Rules settle what the job description states,
   you confirm what it leaves open, code turns the evidence into verdicts, and
   stored model answers make a repeated screening identical. Even with fresh
-  model answers, repeated runs recommend the same candidates
-  ([measured](docs/how-it-works.md#guardrails)).
+  model answers, repeated runs and two different models recommend the same
+  candidates ([measured](docs/how-it-works.md#guardrails)).
 - **Every score is explained**: its breakdown, the evidence, strengths, gaps,
   and what would make a borderline candidate a clear interview.
 - **Yours to run.** OpenAI, Anthropic, Gemini, Ollama or any OpenAI-compatible
   server. Embeddings, index and data stay on your machine; with Ollama, nothing
   leaves it.
 - **Measured, not claimed.** Ranking quality, run-to-run stability and model
-  agreement are measured with scripts in this repository, alongside 590 tests.
+  agreement are measured with scripts in this repository, alongside 594 tests.
 
 **Status:** developer preview (v1.1; the browser interface,
 `resume-shortlister web`, is new on the main branch and comes with 1.2).
@@ -145,11 +145,12 @@ reviewing the result.
   recommendations agreed in the
   [comparison](docs/configuration.md#embeddings); candidates on the threshold can
   go either way, as they can between two runs of the same model.
-- **Chat models can disagree** on candidates near the interview threshold, and only
-  OpenAI's models have been measured (see the
-  [stability check](docs/how-it-works.md#guardrails)). Rules,
-  recruiter confirmation and the answer cache make one model reproducible; a
-  different model can still judge a borderline candidate differently.
+- **Only OpenAI's models have been measured.** gpt-5.6-terra and gpt-6-luna
+  agreed on every recommendation for three job descriptions (see the
+  [stability check](docs/how-it-works.md#guardrails)); Anthropic, Gemini and
+  Ollama models have not been compared. A candidate right at the threshold
+  can still go either way, and a requirement naming several skills is the
+  model's call until you confirm it.
 - **Heuristic skill years.** A skill's years come from the dated roles that
   mention it, so skills listed only in a Skills section are "unverified".
 - **Blind screening covers identity, not every proxy.** Names, contact details

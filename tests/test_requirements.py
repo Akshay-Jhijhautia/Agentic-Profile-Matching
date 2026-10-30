@@ -7,6 +7,7 @@ from resume_shortlister import prompts
 from resume_shortlister.rag import job_matcher, resume_rag, skills_vocab
 from resume_shortlister.requirements import (
     alternative_skills,
+    as_stated,
     degree_required,
     extract_requirements,
     open_questions,
@@ -62,8 +63,8 @@ def test_durations_and_degrees_are_not_skills():
 
 
 def test_unknown_skills_are_kept_as_written():
-    req = _requirements(must_have=[{"skill": " WCAG ", "min_years": None}])
-    assert req.must_have_skills == ["WCAG"]
+    req = _requirements(must_have=[{"skill": " Hotwire ", "min_years": None}])
+    assert req.must_have_skills == ["Hotwire"]
 
 
 def test_to_must_haves_uses_matcher_format():
@@ -174,12 +175,14 @@ def test_rules_make_different_readings_agree(jd):
 def test_rules_on_the_frontend_jd():
     jd = (JD_DIR / "frontend_react.txt").read_text()
     llm_answer = _requirements(must_have=_must("React", "TypeScript", "CSS", years={"TypeScript": 2}),
-                               nice_to_have=["Tailwind CSS", "web accessibility (WCAG)"])
+                               nice_to_have=["Tailwind CSS", "web accessibility (WCAG)", "Design systems"])
     req = extract_requirements(jd, model=_fake(llm_answer))
     # "3+ years of experience with React and TypeScript": the years go to both skills it names.
+    # "A strong eye for accessibility (WCAG)" names one skill, but a practice is never a knockout.
     assert [(r.skill, r.min_years) for r in req.must_have] == [("React", 3), ("TypeScript", 3), ("CSS", None)]
-    # Every other skill in the text, in text order, then the model's other preferences.
-    assert req.nice_to_have == ["Tailwind CSS", "Jest", "Cypress", "Next.js", "GraphQL", "web accessibility (WCAG)"]
+    # Every other skill in the text, in text order; the model's "web accessibility (WCAG)" is the
+    # same skill, and "Design systems", which the text never says, is dropped.
+    assert req.nice_to_have == ["Tailwind CSS", "Jest", "Cypress", "Accessibility", "Next.js", "GraphQL"]
 
 
 @pytest.mark.parametrize("text, must, skill_years, total", [
@@ -262,7 +265,7 @@ def test_rule_floor_never_adds_thresholds_the_llm_left_out():
         ("Hands-on experience with PyTorch or TensorFlow and scikit-learn", {"pytorch", "tensorflow"}),
         ("Kafka and relational databases (Oracle or PostgreSQL)", {"oracle", "postgresql"}),
         ("Testing with Jest or Cypress", {"jest", "cypress"}),
-        ("A warehouse such as Snowflake or BigQuery", {"snowflake"}),
+        ("A warehouse such as Snowflake or BigQuery", {"snowflake", "bigquery"}),
         ("Strong Java and Spring Boot skills", set()),
         ("Bachelor's or Master's degree", set()),
     ],
@@ -313,7 +316,7 @@ def test_policy_demotes_concepts_the_parser_cannot_check():
     )
     req = extract_requirements(jd, model=_fake(llm_answer))
     assert req.must_have_skills == ["Java", "Spring Boot", "Kafka"]
-    assert "Relational Databases" in req.nice_to_have
+    assert "Relational databases" in req.nice_to_have  # as the text writes it
 
 
 @pytest.mark.parametrize("text", ["", "   \n"])
@@ -338,3 +341,13 @@ def test_match_delegates_to_match_parsed(matcher):
     jd = (JD_DIR / "java_backend.txt").read_text()
     parsed = job_matcher.parse_job_description(jd)
     assert matcher.match(jd, k=3, details=True) == matcher.match_parsed(parsed, k=3, details=True)
+
+
+@pytest.mark.parametrize("preference, stated", [
+    ("Financial Services", "Financial services"),
+    ("trade settlement   systems", "Trade settlement systems"),
+    ("Cloud Data Warehousing", None),  # the text says "a cloud data warehouse"
+])
+def test_preferences_count_only_in_the_texts_own_words(preference, stated):
+    text = "- Experience in financial services or trade settlement systems\n- A cloud data warehouse"
+    assert as_stated(preference, text) == stated
