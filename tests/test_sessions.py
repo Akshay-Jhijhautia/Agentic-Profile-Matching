@@ -5,6 +5,7 @@ import os
 import shlex
 import shutil
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 from rich.console import Console
@@ -198,6 +199,43 @@ def test_clean_removes_a_chromadb_index_left_by_an_older_version(home, tmp_path,
     assert not legacy_db.exists() and not legacy_collection.exists() and (tmp_path / "db" / "notes").exists()
     assert ResumePool.open(folder, settings).size == 1  # the current index is untouched
     assert maintenance.find_stale(settings, older_than_days=30) == []
+
+
+def test_clean_all_starts_from_scratch_but_keeps_settings_and_the_model(tmp_path, monkeypatch, capsys):
+    from resume_shortlister.config import Settings
+    from resume_shortlister.llm_cache import ResponseCache
+    from resume_shortlister.rag.vector_store import DB_FILE
+
+    home = tmp_path / "home"
+    settings = Settings(home=str(home), embedder="hashing")
+    folder = _resume_folder(tmp_path)
+    Services(settings=settings).use_folder(folder)
+    batch = Path(settings.uploads_dir) / "session-1"
+    batch.mkdir(parents=True)
+    shutil.copy(RESUMES_DIR / "resume_alex_lee.txt", batch)
+    (Path(settings.uploads_dir) / "notes.txt").write_text("mine", encoding="utf-8")  # not the tool's: kept
+    sessions.open_saver(settings.sessions_db).conn.close()
+    ResponseCache(settings.llm_cache_db).put("k", model="m", kind="DeepReview", request={}, answer="{}")
+    (home / "reports" / "role-1").mkdir(parents=True)
+    (home / "reports" / "role-1" / "summary.md").write_text("# Shortlist", encoding="utf-8")
+    (home / ".env").write_text("OPENAI_API_KEY=sk-test\n", encoding="utf-8")
+    Path(settings.models_dir).mkdir(parents=True)
+    (Path(settings.models_dir) / "model.onnx").write_bytes(b"weights")
+    monkeypatch.setattr(app, "get_settings", lambda: settings)
+
+    assert app.main(["clean", "--all"]) == 0  # a dry run: lists, removes nothing
+    listed = capsys.readouterr().out
+    assert all(kind in listed for kind in ("index", "uploads", "sessions", "cache", "reports"))
+    assert "Kept: your settings" in listed and (Path(settings.db_dir) / DB_FILE).exists()
+
+    assert app.main(["clean", "--all", "--yes"]) == 0
+    assert not (Path(settings.db_dir) / DB_FILE).exists() and not batch.exists() and not (home / "reports").exists()
+    assert not Path(settings.sessions_db).exists() and not Path(settings.llm_cache_db).exists()
+    assert (home / ".env").exists() and (Path(settings.models_dir) / "model.onnx").exists()
+    assert (Path(settings.uploads_dir) / "notes.txt").exists()
+    capsys.readouterr()
+    assert app.main(["clean", "--all"]) == 0 and "Nothing to clean." in capsys.readouterr().out
+    assert len(Services(settings=settings).use_folder(folder).indexed) == 1  # read from scratch
 
 
 def _resume_folder(tmp_path):

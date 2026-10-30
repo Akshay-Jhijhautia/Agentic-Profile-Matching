@@ -38,7 +38,7 @@ in the terminal.
   server. Embeddings, index and data stay on your machine; with Ollama, nothing
   leaves it.
 - **Measured, not claimed.** Ranking quality, run-to-run stability and model
-  agreement are measured with scripts in this repository, alongside 643 tests.
+  agreement are measured with scripts in this repository, alongside 644 tests.
 
 **Status:** developer preview (v1.1; the browser interface,
 `resume-shortlister web`, is new on the main branch and comes with 1.2).
@@ -135,6 +135,27 @@ you> Write 3 interview questions for the top candidate
 resume-shortlister screen --jd-file job.pdf --resumes ~/Downloads/applicants   # one shot
 ```
 
+### 5. Your data stays on your computer
+
+Nothing is uploaded to us: there is no account and no server of ours. Everything the
+app keeps is in one folder on your computer, `~/.resume-shortlister`: the index of each
+resume folder (the resumes' text and search vectors, about 5 MB per 100 resumes), copies
+of uploaded files, saved sessions, stored model answers and reports. Resume text goes only
+to the chat model you configure, without names and contact details when it judges
+candidates; with a local model (Ollama), nothing leaves your computer at all.
+
+To clear it and start from scratch:
+
+```bash
+resume-shortlister clean --all          # lists every index, upload, session, stored answer and report
+resume-shortlister clean --all --yes    # deletes them (stop the app first)
+```
+
+Your settings (the API key in `.env`) and the downloaded embedding model are kept, and every
+folder is read again from scratch the next time you screen it. To remove absolutely
+everything, key and model included, delete the folder: `rm -rf ~/.resume-shortlister`.
+`resume-shortlister clean` without `--all` only removes what has not been used for 30 days.
+
 Every command, your resumes, where your data lives and Docker:
 [Usage](docs/usage.md).
 
@@ -192,8 +213,9 @@ reviewing the result.
 - **Candidate data.** Resumes, the index, saved sessions and stored model
   answers stay on your machine under `~/.resume-shortlister`. Resume text is sent to
   the chat model you configure; use a local model (Ollama) if it must not leave
-  your machine. `resume-shortlister clean` and `resume-shortlister cache --clear` delete
-  what is no longer needed.
+  your machine. `resume-shortlister clean` deletes what has not been used for 30
+  days, and `resume-shortlister clean --all --yes` every piece of candidate data
+  ([step 5](#5-your-data-stays-on-your-computer)).
 - **Candidates can game resumes.** Instruction-like text is flagged, but treat
   any result as a starting point for a conversation, not a verdict.
 

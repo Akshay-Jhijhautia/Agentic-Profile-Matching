@@ -70,6 +70,7 @@ From a source checkout, `python main.py ...` runs the same commands.
 | `resume-shortlister list FOLDER` | The candidates indexed from a folder |
 | `resume-shortlister sessions [--delete ID]` | Saved chat sessions, newest first: id, date, role, resumes |
 | `resume-shortlister clean [--older-than DAYS] [--yes]` | Old upload batches and sessions (default 30 days), stored model answers unused that long, indexes of deleted folders, and a ChromaDB index left by versions before 1.1; lists them, deletes with `--yes` |
+| `resume-shortlister clean --all [--yes]` | Every piece of candidate data, to start from scratch: every index, uploaded copy, saved session, stored model answer and the web app's reports. Keeps your settings (`.env`) and the embedding model; lists first, deletes with `--yes` |
 | `resume-shortlister cache [--clear]` | Stored model answers (see [Reproducible results](how-it-works.md#reproducible-results)); `--clear` deletes them |
 | `resume-shortlister web [--port PORT] [--no-browser]` | The app in your browser, on this computer only: screening, candidate details, interview questions and the chat |
 | `resume-shortlister --version` | The installed version |

@@ -163,22 +163,32 @@ def list_sessions(argv: list[str]) -> int:
 
 
 def clean(argv: list[str]) -> int:
-    parser = _parser("clean", "Remove old upload batches and sessions, and indexes of deleted folders.")
-    parser.add_argument("--older-than", type=int, default=DEFAULT_CLEAN_DAYS, metavar="DAYS",
-                        help=f"Age of uploads and sessions to remove (default: {DEFAULT_CLEAN_DAYS}).")
+    parser = _parser("clean", "Remove old upload batches and sessions, and indexes of deleted folders; "
+                              "or, with --all, every piece of candidate data to start from scratch.")
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument("--older-than", type=int, default=DEFAULT_CLEAN_DAYS, metavar="DAYS",
+                       help=f"Age of uploads and sessions to remove (default: {DEFAULT_CLEAN_DAYS}).")
+    scope.add_argument("--all", action="store_true",
+                       help="Every index, upload, session, stored answer and web report; "
+                            "your settings and the embedding model are kept.")
     parser.add_argument("--yes", action="store_true", help="Delete; without it, only list what would go.")
     args = parser.parse_args(argv)
     settings = get_settings()
-    stale = maintenance.find_stale(settings, args.older_than)
+    stale = maintenance.find_all(settings) if args.all else maintenance.find_stale(settings, args.older_than)
     if not stale:
         print("Nothing to clean.")
         return 0
     print("\n".join(item.line() for item in stale))
+    if args.all:
+        print("\nKept: " + "; ".join(maintenance.kept(settings)) + ".")
     if not args.yes:
-        print(f"\n{len(stale)} item(s) would be removed. Run again with --yes to delete them.")
+        stop = " Stop the web app and any chat first." if args.all else ""
+        print(f"\n{len(stale)} item(s) would be removed.{stop} Run again with --yes to delete them.")
         return 0
     maintenance.remove(settings, stale)
     print(f"\nRemoved {len(stale)} item(s).")
+    if args.all:
+        print("Every folder is read from scratch the next time you screen it.")
     return 0
 
 

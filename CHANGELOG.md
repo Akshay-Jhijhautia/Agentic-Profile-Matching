@@ -40,6 +40,10 @@
   code-detected risks are high. Over 5 fresh runs on three job descriptions,
   the average deep-score spread fell from 9–15 points to under 4, and interview
   recommendations agreed in every run.
+- `resume-shortlister clean --all`: removes every piece of candidate data (every
+  index, uploaded copy, saved session, stored model answer and the web app's
+  reports) to start from scratch, keeping the settings and the embedding model.
+  It lists first and deletes with `--yes`, and only the tool's own files.
 - **Requirements for any profession**: a skill the vocabulary does not know
   (Workday, TCP/IP, Ceridian Dayforce) becomes a requirement when the job
   description names it, is searched for in resumes as written, and gets its
