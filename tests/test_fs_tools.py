@@ -266,3 +266,16 @@ def test_search_missing_file(tmp_path):
     result = fs_tools.search_in_file(str(tmp_path / "missing.txt"), "python")
     assert result["success"] is False
     assert "not found" in result["error"].lower()
+
+
+def test_text_reads_as_plain_characters(tmp_path):
+    # As PDFs often extract it: a ligature, a non-breaking space, a full-width letter.
+    raw = "Certiﬁed ﬁrewall workﬂow in Microsoft Oﬃce; ＡWS"
+    path = tmp_path / "resume.txt"
+    path.write_text(raw, encoding="utf-8")
+    docx_path = tmp_path / "resume.docx"
+    document = Document()
+    document.add_paragraph(raw)
+    document.save(docx_path)
+    for file in (path, docx_path):
+        assert fs_tools.read_file(str(file))["content"].strip() == "Certified firewall workflow in Microsoft Office; AWS"

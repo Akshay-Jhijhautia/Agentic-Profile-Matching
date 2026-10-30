@@ -85,6 +85,24 @@
 
 ### Fixed
 
+Found by screening 684 real resumes (LiveCareer examples) for the first time:
+
+- A job title or heading at the top of a resume ("INFORMATION TECHNOLOGY
+  MANAGER", "CAREER OVERVIEW") was read as the candidate's name, and blind
+  screening then hid those words from the model. Such lines are no longer
+  names; a resume without one is named after its file.
+- Indexing asked the model for the name of every resume without one: 212
+  calls and 11 minutes for 219 resumes. It no longer asks for names (90
+  seconds), and what it does ask (dates, education) goes without the name and
+  contact details.
+- Ligatures and other compatibility characters in PDF text ("certiﬁed",
+  "Microsoft Ofﬁce", non-breaking spaces) are read as plain letters, so skills
+  and keywords match (85% of the real PDFs had them).
+- Several processes starting at once (the web app and a terminal screening)
+  could fail with "database is locked" while creating a new database.
+- `Settings(home=...)` kept the index, sessions, uploads, models and stored
+  answers in the default data home; every path not set on its own now follows
+  `home`.
 - `scripts/stability_check.py` and `scripts/requirements_stability.py` stop
   with a one-line error when the provider refuses (no credits, rate limit)
   instead of a traceback.

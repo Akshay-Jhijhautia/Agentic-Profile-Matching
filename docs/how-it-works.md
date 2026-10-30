@@ -242,6 +242,10 @@ learns it (`rag/personal_data.py`, `candidates.blind_resume`, `anonymous.py`):
 - **Round 1.** The search embeds and keyword-matches resume text without the
   name or personal details, and a name is never read as a skill: before,
   "Ruby Swift" was credited with Ruby and Swift from her name line.
+- **Indexing.** When the rules cannot read a resume's dates or education, the
+  model is asked for just those, from the text without the name and contact
+  details. It is never asked for a name: a resume without one is named after
+  its file.
 - **Evidence stays.** Dates, companies, schools and locations inside the work
   history are kept, and a name part that is also a skill or a month ("Swift",
   "May") is hidden only as part of the full name, so "built apps in Swift"

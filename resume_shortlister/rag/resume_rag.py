@@ -39,7 +39,7 @@ DEFAULT_DB_DIR = "index"
 COLLECTION_NAME = "resumes"
 # Part of every resume's content hash: bump it when chunking or metadata
 # extraction changes so the next `index` run refreshes every resume.
-PIPELINE_VERSION = "5"
+PIPELINE_VERSION = "6"
 
 MAX_CHUNK_CHARS = 1500
 HEADER_SECTION = "Header"
@@ -351,6 +351,25 @@ _DEGREE_PATTERNS = [
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _CONTACT_LINE_RE = re.compile(r"@|https?://|www\.|linkedin|github|\d{3}", re.IGNORECASE)
 _NOT_A_NAME = {"resume", "curriculum vitae", "cv", "profile"}
+# Words of job titles and headings: a line with one is not a name. Many resumes open with a
+# title ("INFORMATION TECHNOLOGY MANAGER") or a heading ("CAREER OVERVIEW") instead of a name.
+# Common surnames that are also occupations (Cook, Baker, Mason, Taylor) are left out.
+_TITLE_WORDS = {
+    "access", "accomplishments", "accountant", "accounting", "administrative", "administrator",
+    "adviser", "advisor", "advocate", "agent", "analysis", "analyst", "architect", "assistant",
+    "associate", "attorney", "auditor", "base", "business", "career", "chef", "chief", "clerk",
+    "consultant", "control", "controller", "coordinator", "core", "craftsman", "customer",
+    "data", "designer", "developer", "development", "director", "electrician", "engineer",
+    "engineering", "executive", "expert", "finance", "financial", "head", "highlights", "hr",
+    "information", "instructor", "intern", "it", "junior", "knowledge", "lead", "leader",
+    "management", "manager", "marketing", "mechanic", "monitor", "nurse", "objective", "office",
+    "officer", "operations", "operator", "overview", "patient", "pharmacist", "planning",
+    "president", "professional", "programmer", "project", "qualifications", "receptionist",
+    "recruiter", "rep", "representative", "sales", "scientist", "senior", "service", "software",
+    "specialist", "staff", "strategic", "strengths", "summary", "supervisor", "support",
+    "systems", "teacher", "team", "tech", "technical", "technician", "technologist",
+    "technology", "therapist", "trainer", "training", "vice",
+}
 _NAME_PARTICLES = {"de", "del", "la", "le", "da", "di", "van", "von", "der", "den", "bin", "al"}
 _MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], start=1
@@ -384,7 +403,8 @@ def _extract_name(sections: dict[str, str]) -> str | None:
         if not line or _CONTACT_LINE_RE.search(line) or line.lower() in _NOT_A_NAME:
             continue
         words = line.split()
-        if 2 <= len(words) <= 5 and all(_is_name_word(w) for w in words):
+        if (2 <= len(words) <= 5 and all(_is_name_word(w) for w in words)
+                and not {w.strip(".,").lower() for w in words} & _TITLE_WORDS):
             return line
     return None
 
@@ -586,7 +606,6 @@ def _extract_education(sections: dict[str, str]) -> tuple[list[str], str | None]
 # --- LLM fallback -------------------------------------------------------------------------
 
 _LLM_FIELD_SCHEMAS = {
-    "name": {"type": ["string", "null"], "description": "Candidate's full name."},
     "experience_years": {
         "type": ["number", "null"],
         "description": "Total years of professional work experience.",
@@ -630,10 +649,6 @@ def metadata_schema(fields: list[str]) -> dict:
 def _apply_llm_values(metadata: dict, values: dict) -> list[str]:
     """Copy valid LLM values into ``metadata`` and return the names of the fields filled."""
     filled = []
-    name = values.get("name")
-    if "name" in values and isinstance(name, str) and name.strip():
-        metadata["name"] = name.strip()
-        filled.append("name")
     years = values.get("experience_years")
     if isinstance(years, (int, float)) and 0 <= years <= 60:
         metadata["experience_years"] = round(float(years), 1)
@@ -660,10 +675,12 @@ def extract_metadata(
 ) -> dict:
     """Extract searchable metadata from resume text.
 
-    Fields are parsed with rules first. If ``name``, ``experience_years`` or
-    ``education`` is still missing and ``llm`` is given, one structured-output
-    call fills only the missing fields. A name that is still
-    missing falls back to the file name.
+    Fields are parsed with rules first. If ``experience_years`` or ``education``
+    is still missing and ``llm`` is given, one structured-output call fills only
+    the missing fields, from the resume without its name and contact details.
+    A missing name is never asked for (a model cannot find a name the resume
+    does not have, and asking for each anonymous resume made indexing slow): it
+    falls back to the file name.
 
     Returns ``{"name", "email", "skills", "experience_years", "skill_years",
     "education", "highest_degree", "llm_fields"}`` where ``llm_fields`` lists
@@ -687,19 +704,19 @@ def extract_metadata(
         "llm_fields": [],
     }
 
-    missing = [f for f in ("name", "experience_years", "education") if not metadata[f]]
+    if not metadata["name"]:
+        metadata["name"] = _name_from_path(resume_path) if resume_path else None
+    missing = [f for f in ("experience_years", "education") if not metadata[f]]
     if metadata["experience_years"] == 0:
         missing.remove("experience_years")  # parsed, just no experience yet
     if missing and llm is not None:
         fields = missing + (["highest_degree"] if "education" in missing else [])
+        impersonal = personal_data.redact(text, metadata["name"])  # dates and degrees need no identity
         try:
-            values = llm(metadata_schema(fields), _LLM_SYSTEM, text[:LLM_MAX_INPUT_CHARS])
+            values = llm(metadata_schema(fields), _LLM_SYSTEM, impersonal[:LLM_MAX_INPUT_CHARS])
             metadata["llm_fields"] = _apply_llm_values(metadata, values)
         except MetadataLLMError as exc:
             logger.warning("LLM metadata fallback failed for %s: %s", resume_path or "resume", exc)
-
-    if not metadata["name"]:
-        metadata["name"] = _name_from_path(resume_path) if resume_path else None
     return metadata
 
 

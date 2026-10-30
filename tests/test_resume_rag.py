@@ -197,6 +197,22 @@ def test_name_allows_particles_and_rejects_lowercase_prose():
     assert _meta("built many apps\nSKILLS\nPython")["name"] is None
 
 
+@pytest.mark.parametrize("first_line", [
+    "INFORMATION TECHNOLOGY MANAGER", "Senior Software Engineer", "CAREER OVERVIEW",
+    "HR Personnel Assistant", "Director Of Finance", "PATIENT ACCESS REP", "BPO TEAM LEADER",
+    "STAFF PHARMACIST", "Data Analysis",
+])
+def test_a_job_title_or_heading_is_not_a_name(first_line):
+    assert _meta(f"{first_line}\nSUMMARY\nTen years in IT.", resume_path="r/applicant_123.pdf")["name"] == "Applicant 123"
+
+
+def test_names_that_are_also_occupations_are_still_names():
+    assert _meta("Tim Cook\nSKILLS\nPython")["name"] == "Tim Cook"
+    assert _meta("Grace Mason Baker\nSKILLS\nPython")["name"] == "Grace Mason Baker"
+    assert _meta("Ruby Swift\nSKILLS\nPython")["name"] == "Ruby Swift"  # skills, but a name
+    assert _meta("TAM BUI\nSKILLS\nPython")["name"] == "TAM BUI"
+
+
 def test_name_falls_back_to_file_name():
     meta = _meta("SKILLS\nPython", resume_path="resumes/resume_mary_jones.pdf")
     assert meta["name"] == "Mary Jones"
@@ -315,28 +331,29 @@ def test_llm_not_called_when_rules_find_everything():
 
 def test_llm_fills_only_missing_fields():
     text = "jane@x.com\nSKILLS\nPython\nEXPERIENCE\nDev, X (2020 - 2022)"
-    llm = FakeLLM(
-        {
-            "name": "Jane Roe",
-            "education": ["MSc Physics, Oxford, 2019"],
-            "highest_degree": None,
-        }
-    )
-    meta = _meta(text, llm=llm)
+    llm = FakeLLM({"education": ["MSc Physics, Oxford, 2019"], "highest_degree": None})
+    meta = _meta(text, resume_path="cvs/jane_roe.pdf", llm=llm)
 
-    assert meta["name"] == "Jane Roe"
+    assert meta["name"] == "Jane Roe"  # from the file name: the model is never asked for one
     assert meta["education"] == ["MSc Physics, Oxford, 2019"]
     assert meta["highest_degree"] == "Master's"  # derived when the LLM gives none
     assert meta["experience_years"] == 2.0  # from rules, not asked
-    assert meta["llm_fields"] == ["name", "education"]
+    assert meta["llm_fields"] == ["education"]
 
     ((schema, _, sent),) = llm.calls
-    assert sorted(schema["properties"]) == ["education", "highest_degree", "name"]
-    assert schema["required"] == list(schema["properties"]) and sent == text
+    assert sorted(schema["properties"]) == ["education", "highest_degree"]
+    assert schema["required"] == list(schema["properties"])
+    assert sent == text.replace("jane@x.com", "[email]")  # contact details never sent
+
+
+def test_a_resume_without_a_name_needs_no_model():
+    llm = FakeLLM({})
+    meta = _meta("INFORMATION TECHNOLOGY MANAGER\n" + SAMPLE.split("\n", 1)[1], resume_path="r/applicant_7.pdf", llm=llm)
+    assert meta["name"] == "Applicant 7" and llm.calls == []
 
 
 def test_llm_invalid_values_are_ignored():
-    llm = FakeLLM({"name": "", "experience_years": -3, "education": []})
+    llm = FakeLLM({"experience_years": -3, "education": []})
     meta = _meta("hello world", resume_path="cv_bob_stone.txt", llm=llm)
     assert meta["llm_fields"] == []
     assert meta["name"] == "Bob Stone"

@@ -139,3 +139,40 @@ def test_an_index_from_a_newer_version_is_refused(tmp_path):
         db.execute("PRAGMA user_version = 99")
     with pytest.raises(ValueError, match="newer resume-shortlister"):
         VectorStore(tmp_path / "index")
+
+
+def test_a_new_database_waits_for_another_process_instead_of_failing(tmp_path):
+    from resume_shortlister.rag.vector_store import open_sqlite
+
+    path = tmp_path / "new.sqlite"
+    other = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
+    other.execute("CREATE TABLE t(v)")
+    other.execute("BEGIN")
+    other.execute("SELECT * FROM t").fetchall()  # holds the database while we switch it to WAL
+    threading.Timer(0.5, lambda: other.execute("COMMIT")).start()
+    db = open_sqlite(path)
+    assert db.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+
+
+def test_several_processes_can_create_the_same_stores_at_once(tmp_path):
+    """Processes switching the same new database to WAL at the same instant once failed with
+    "database is locked" (the web app and a terminal screening started together)."""
+    import subprocess
+    import sys
+    import time
+
+    script = (
+        "import pathlib, sys\n"
+        "from resume_shortlister.llm_cache import ResponseCache\n"
+        "from resume_shortlister.rag.vector_store import VectorStore\n"
+        "while not pathlib.Path(sys.argv[1]).exists(): pass\n"
+        "ResponseCache(sys.argv[2]); VectorStore(sys.argv[3])\n"
+    )
+    for round_ in range(2):
+        start, folder = tmp_path / f"go{round_}", tmp_path / f"home{round_}"
+        procs = [subprocess.Popen([sys.executable, "-c", script, str(start), str(folder / "answers.sqlite"),
+                                   str(folder / "index")], stderr=subprocess.PIPE) for _ in range(12)]
+        time.sleep(1)  # every process waiting on the start signal
+        start.touch()
+        errors = [p.communicate(timeout=120)[1].decode() for p in procs]
+        assert [p.returncode for p in procs] == [0] * 12, [e for e in errors if e][:1]

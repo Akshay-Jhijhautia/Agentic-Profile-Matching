@@ -53,6 +53,13 @@ def test_data_home_holds_index_uploads_and_sessions(clean_env, tmp_path):
     assert Settings.from_env().db_dir == "/elsewhere/index"
 
 
+def test_settings_built_directly_keep_their_data_in_their_home(tmp_path):
+    settings = Settings(home=str(tmp_path), models_dir="/shared/models")
+    for path in (settings.db_dir, settings.uploads_dir, settings.sessions_db, settings.llm_cache_db):
+        assert path.startswith(str(tmp_path))  # never the default data home
+    assert settings.models_dir == "/shared/models"  # set on its own: kept
+
+
 def test_empty_temperature_means_provider_default(clean_env):
     clean_env.setenv("OPENAI_TEMPERATURE", "")
     assert Settings.from_env().llm_temperature is None

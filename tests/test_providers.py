@@ -224,14 +224,14 @@ def test_metadata_fallback_uses_the_configured_model(monkeypatch, no_keys):
     assert llm.metadata_fallback() is None  # no ANTHROPIC_API_KEY: rules only
 
     no_keys.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-    monkeypatch.setattr(llm, "get_chat_model", lambda: SchemaModel({"name": "Ann Lee"}))
+    monkeypatch.setattr(llm, "get_chat_model", lambda: SchemaModel({"experience_years": 6}))
     extract = llm.metadata_fallback()
-    assert extract(resume_rag.metadata_schema(["name"]), "system", "resume") == {"name": "Ann Lee"}
+    assert extract(resume_rag.metadata_schema(["experience_years"]), "system", "resume") == {"experience_years": 6}
 
     down = openai.APIConnectionError(request=REQUEST)
     monkeypatch.setattr(llm, "get_chat_model", lambda: SchemaModel(down))
     with pytest.raises(resume_rag.MetadataLLMError, match="could not reach the OpenAI API"):
-        llm.metadata_fallback()(resume_rag.metadata_schema(["name"]), "system", "resume")
+        llm.metadata_fallback()(resume_rag.metadata_schema(["experience_years"]), "system", "resume")
 
 
 def test_replies_made_of_content_blocks_are_read_as_text():

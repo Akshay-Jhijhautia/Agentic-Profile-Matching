@@ -16,11 +16,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sqlite3
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from .rag.vector_store import open_sqlite
 
 # Part of every key: bump it if what a stored answer means ever changes.
 CACHE_VERSION = 1
@@ -64,9 +65,8 @@ class ResponseCache:
         self.path = Path(path).expanduser()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
-        self._db = sqlite3.connect(self.path, check_same_thread=False, isolation_level=None)
+        self._db = open_sqlite(self.path, isolation_level=None)
         with self._lock:
-            self._db.execute("PRAGMA journal_mode=WAL")
             self._db.executescript(_SCHEMA)
 
     def get(self, key: str) -> str | None:

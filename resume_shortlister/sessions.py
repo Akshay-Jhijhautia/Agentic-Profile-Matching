@@ -7,7 +7,6 @@ deleted.
 
 from __future__ import annotations
 
-import sqlite3
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,6 +16,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph.state import CompiledStateGraph
 
 from .agent.state import serializer
+from .rag.vector_store import open_sqlite
 
 
 def new_session_id() -> str:
@@ -32,7 +32,8 @@ def open_saver(path: str) -> SqliteSaver:
     """The session store at ``path`` (created on first use)."""
     db = Path(path).expanduser()
     db.parent.mkdir(parents=True, exist_ok=True)
-    saver = SqliteSaver(sqlite3.connect(str(db), check_same_thread=False), serde=serializer())
+    # Already in WAL mode, so the saver's own switch in ``setup`` never waits on a lock.
+    saver = SqliteSaver(open_sqlite(db), serde=serializer())
     saver.setup()
     return saver
 

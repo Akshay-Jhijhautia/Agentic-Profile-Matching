@@ -20,12 +20,36 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+
+# How long a connection waits for another process's lock (seconds).
+BUSY_TIMEOUT = 30
+
+
+def open_sqlite(path: str | Path, **options) -> sqlite3.Connection:
+    """A connection to the SQLite database at ``path`` in WAL mode, where readers in other
+    processes never block on a writer.
+
+    Only a new database is switched to WAL (the mode stays with the file), and that switch
+    needs the database to itself: when several processes create the same database at once
+    (the web app and a terminal screening), it waits for the others instead of failing.
+    """
+    db = sqlite3.connect(path, check_same_thread=False, timeout=BUSY_TIMEOUT, **options)
+    deadline = time.monotonic() + BUSY_TIMEOUT
+    while db.execute("PRAGMA journal_mode").fetchone()[0].lower() != "wal":
+        try:
+            db.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc) or time.monotonic() > deadline:
+                raise
+            time.sleep(0.05)
+    return db
 
 DB_FILE = "index.sqlite"
 SCHEMA_VERSION = 1
@@ -71,10 +95,8 @@ class VectorStore:
         self._lock = threading.RLock()
         # Commits through this connection, which data_version does not count.
         self.writes = 0
-        self._db = sqlite3.connect(self.path, check_same_thread=False, isolation_level=None)
+        self._db = open_sqlite(self.path, isolation_level=None)
         with self._lock:
-            # WAL: readers in other processes (another chat) never block on a writer.
-            self._db.execute("PRAGMA journal_mode=WAL")
             version = self._db.execute("PRAGMA user_version").fetchone()[0]
             if version > SCHEMA_VERSION:
                 raise ValueError(f"{self.path} was written by a newer resume-shortlister; upgrade to use it.")

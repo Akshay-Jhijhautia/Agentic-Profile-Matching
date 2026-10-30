@@ -60,6 +60,13 @@ def _flag(name: str, default: bool | None) -> bool | None:
     return default if value in (None, "") else value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+# Where each local data path is inside the data home, unless set on its own.
+HOME_PATHS = {
+    "db_dir": "index", "uploads_dir": "uploads", "sessions_db": "sessions.sqlite",
+    "models_dir": "models", "llm_cache_db": "llm_cache.sqlite",
+}
+
+
 @dataclass(frozen=True)
 class Settings:
     # openai, anthropic, google or ollama (see ``providers.PROVIDERS``).
@@ -75,18 +82,20 @@ class Settings:
     # OpenAI's Responses API, needed for tool calling with reasoning models (gpt-5.6, gpt-6).
     # None: on for OpenAI itself, off for OpenAI-compatible servers, which rarely have it.
     llm_responses_api: bool | None = None
-    # Local data: one folder holding the indexes, uploads and sessions below.
+    # Local data: one folder holding the indexes, uploads and sessions below. Each path left
+    # empty is that file or folder inside ``home`` (``HOME_PATHS``), so a different home never
+    # mixes its data with the default one.
     home: str = str(DEFAULT_HOME)
-    db_dir: str = str(DEFAULT_HOME / "index")
+    db_dir: str = ""
     # Where resumes uploaded in chat (or given as files) are copied, one subfolder per batch.
-    uploads_dir: str = str(DEFAULT_HOME / "uploads")
+    uploads_dir: str = ""
     # Saved chat sessions (SQLite).
-    sessions_db: str = str(DEFAULT_HOME / "sessions.sqlite")
+    sessions_db: str = ""
     # Resume embeddings: "local" (an open-source model on this machine, the default),
     # "openai", or "hashing" (offline, keyword overlap only; for tests).
     embedder: str = "local"
     # Where the local embedding model is downloaded (once).
-    models_dir: str = str(DEFAULT_HOME / "models")
+    models_dir: str = ""
     # The only directory the agent may write to (reports, summaries).
     reports_dir: str = "reports"
     # Candidates kept after the initial screen.
@@ -97,7 +106,7 @@ class Settings:
     save_reports: bool = True
     # Reuse the model's answer to a question asked before (see ``llm_cache``).
     llm_cache: bool = True
-    llm_cache_db: str = str(DEFAULT_HOME / "llm_cache.sqlite")
+    llm_cache_db: str = ""
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -115,20 +124,24 @@ class Settings:
             llm_base_url=_env("LLM_BASE_URL"),
             llm_responses_api=_flag("OPENAI_RESPONSES_API", defaults.llm_responses_api),
             home=str(home),
-            db_dir=_env("INDEX_DIR", "CHROMA_DB_DIR") or str(home / "index"),
-            uploads_dir=os.getenv("UPLOADS_DIR") or str(home / "uploads"),
-            sessions_db=os.getenv("SESSIONS_DB") or str(home / "sessions.sqlite"),
+            db_dir=_env("INDEX_DIR", "CHROMA_DB_DIR") or "",
+            uploads_dir=os.getenv("UPLOADS_DIR") or "",
+            sessions_db=os.getenv("SESSIONS_DB") or "",
             embedder=os.getenv("EMBEDDER") or defaults.embedder,
-            models_dir=os.getenv("MODELS_DIR") or str(home / "models"),
+            models_dir=os.getenv("MODELS_DIR") or "",
             reports_dir=os.getenv("REPORTS_DIR") or defaults.reports_dir,
             shortlist_size=int(os.getenv("SHORTLIST_SIZE") or defaults.shortlist_size),
             screening_rounds=int(os.getenv("SCREENING_ROUNDS") or defaults.screening_rounds),
             save_reports=_flag("SAVE_REPORTS", defaults.save_reports),
             llm_cache=_flag("LLM_CACHE", defaults.llm_cache),
-            llm_cache_db=os.getenv("LLM_CACHE_DB") or str(home / "llm_cache.sqlite"),
+            llm_cache_db=os.getenv("LLM_CACHE_DB") or "",
         )
 
     def __post_init__(self) -> None:
+        home = Path(self.home).expanduser()
+        for name, inside in HOME_PATHS.items():
+            if not getattr(self, name):
+                object.__setattr__(self, name, str(home / inside))
         provider = providers.get(self.llm_provider)
         if not self.llm_model:
             if provider.default_model is None:

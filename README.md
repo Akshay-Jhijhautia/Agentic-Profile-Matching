@@ -38,7 +38,7 @@ in the terminal.
   server. Embeddings, index and data stay on your machine; with Ollama, nothing
   leaves it.
 - **Measured, not claimed.** Ranking quality, run-to-run stability and model
-  agreement are measured with scripts in this repository, alongside 594 tests.
+  agreement are measured with scripts in this repository, alongside 609 tests.
 
 **Status:** developer preview (v1.1; the browser interface,
 `resume-shortlister web`, is new on the main branch and comes with 1.2).

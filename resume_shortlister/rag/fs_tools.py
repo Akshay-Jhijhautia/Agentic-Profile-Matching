@@ -10,6 +10,7 @@ directory; callers such as the LLM dispatcher should catch those exceptions.
 from __future__ import annotations
 
 import re
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 
@@ -113,6 +114,9 @@ def read_file(filepath: str) -> dict:
         return _error(str(path), f"Could not parse PDF (corrupt or invalid): {exc}")
     except Exception as exc:  # corrupt DOCX zip, unexpected parser failures, etc.
         return _error(str(path), f"Failed to read file: {type(exc).__name__}: {exc}")
+    # Ligatures ("ﬁ" in "certiﬁed"), non-breaking spaces and full-width letters, common in PDF
+    # text, as the plain characters they stand for, so words match as they read.
+    content = unicodedata.normalize("NFKC", content)
 
     metadata = {
         "name": path.name,
